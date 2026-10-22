@@ -8,6 +8,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>⚽ Trainingsplaner</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
 /* ===== VARIABLEN ===== */
 :root {
@@ -4152,6 +4155,16 @@ function initEvents() {
     if (e.key === 'Enter' && e.target.id === 'f-name') formSpeichern();
   });
 }
+
+/* ===== OFFLINE-MODUS (Service Worker) ===== */
+// Funktioniert nur über https (z. B. GitHub Pages); beim Öffnen als lokale Datei wird er übersprungen
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+// Browser bitten, die Daten nicht von selbst zu löschen
+try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(_) {}
 
 /* ===== START ===== */
 document.addEventListener('DOMContentLoaded', () => {
