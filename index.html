@@ -4227,12 +4227,14 @@ function torschuetzenR() {
 
   spiele.forEach((sp, i) => (Array.isArray(sp.tore) ? sp.tore : []).forEach(t => {
     toreGesamt++;
-    if (!t.name) { ohneSchuetze++; return; }
-    const k = t.spielerId || ('n:' + t.name);
-    if (!stat[k]) stat[k] = { name: t.name, tore: 0, spiele: new Set() };
-    const aktuell = t.spielerId ? S.spieler.find(x => x.id === t.spielerId) : null;
-    if (aktuell) stat[k].name = aktuell.name;
-    if (aktuell && aktuell.foto) stat[k].foto = aktuell.foto;
+    // Spieler über die ID finden, sonst über den Namen (z. B. wenn der Spieler neu angelegt wurde)
+    const nm = String(t.name || '').trim().toLowerCase();
+    const aktuell = (t.spielerId && S.spieler.find(x => x.id === t.spielerId))
+      || (nm && S.spieler.find(x => String(x.name || '').trim().toLowerCase() === nm))
+      || null;
+    if (!aktuell && !nm) { ohneSchuetze++; return; }
+    const k = aktuell ? aktuell.id : 'n:' + nm;
+    if (!stat[k]) stat[k] = { name: aktuell ? aktuell.name : t.name, tore: 0, spiele: new Set(), foto: aktuell && aktuell.foto ? aktuell.foto : null };
     stat[k].tore++;
     stat[k].spiele.add(i);
   }));
