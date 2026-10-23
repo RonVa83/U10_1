@@ -843,7 +843,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
     <button class="nav-tab" data-tab="trainingsplan">📋 Trainingsplan</button>
     <button class="nav-tab" data-tab="spielplanung">⚽ Spielplanung</button>
     <button class="nav-tab" data-tab="gegner">🔍 Gegner</button>
-    <button class="nav-tab" data-tab="torschuetzen">🥇 Torschützen</button>
   </nav>
 
   <!-- Haupt-Inhaltsbereich -->
@@ -858,6 +857,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="db-hint"></div>
       <div id="db-spiele"></div>
       <div id="db-tabelle"></div>
+      <div id="db-torschuetzen"></div>
     </section>
 
     <!-- Match -->
@@ -913,11 +913,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="gegner-content"></div>
     </section>
 
-    <!-- Torschützen -->
-    <section id="tab-torschuetzen" class="tab-s">
-      <div class="sek-h"><h2>🥇 Torschützen</h2></div>
-      <div id="torschuetzen-content"></div>
-    </section>
 
   </main>
 
@@ -932,11 +927,11 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
     <button class="nav-tab" data-tab="spieler" aria-label="Team">
       <span class="nav-icon">👥</span><span class="nav-label">Team</span>
     </button>
-    <button class="nav-tab" data-tab="training" aria-label="Training">
-      <span class="nav-icon">⚽</span><span class="nav-label">Training</span>
-    </button>
     <button class="nav-tab" data-tab="spielplanung" aria-label="Spielplanung">
       <span class="nav-icon">🧩</span><span class="nav-label">Spiele</span>
+    </button>
+    <button class="nav-tab" data-tab="gegner" aria-label="Gegner-Analyse">
+      <span class="nav-icon">🔍</span><span class="nav-label">Gegner</span>
     </button>
     <button class="nav-tab" id="nav-mehr" type="button" onclick="mehrMenueOeffnen()" aria-label="Mehr">
       <span class="nav-icon">☰</span><span class="nav-label">Mehr</span>
@@ -1697,6 +1692,7 @@ function dbR() {
 
   dashboardSpieleRender();
   tabelleR();
+  torschuetzenR();
 
   spielTimerRender();
   spielstandModalAktualisieren();
@@ -2633,9 +2629,8 @@ function mehrMenueOeffnen() {
   document.getElementById('modal-body').innerHTML =
     '<div style="display:flex;flex-direction:column;gap:.5rem">'
     + titel('Seiten')
+    + eintrag('⚽', 'Training', "mehrGehe('training')")
     + eintrag('📋', 'Trainingsplan', "mehrGehe('trainingsplan')")
-    + eintrag('🔍', 'Gegner-Analyse', "mehrGehe('gegner')")
-    + eintrag('🥇', 'Torschützen', "mehrGehe('torschuetzen')")
     + eigeneLinks
     + titel('Werkzeuge')
     + '<a class="btn btn-out btn-full" style="' + stil + '" href="' + h(dfbnetUrl()) + '" target="_blank" rel="noopener" onclick="modalSch()"><span style="font-size:1.25rem">📤</span>Ergebnis melden (DFBnet)</a>'
@@ -3607,7 +3602,7 @@ function tabW(id) {
   document.querySelectorAll('.tab-s').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   const mehrBtn = document.getElementById('nav-mehr');
-  if (mehrBtn) mehrBtn.classList.toggle('active', ['trainingsplan', 'gegner', 'torschuetzen'].includes(id));
+  if (mehrBtn) mehrBtn.classList.toggle('active', ['training', 'trainingsplan'].includes(id));
 
   const sek = document.getElementById('tab-' + id);
   if (sek) sek.classList.add('active');
@@ -3621,7 +3616,6 @@ function tabW(id) {
   if (id === 'trainingsplan') planR();
   if (id === 'spielplanung') spielplanungR();
   if (id === 'gegner') gegnerR();
-  if (id === 'torschuetzen') torschuetzenR();
   if (id === 'dashboard') dbR();
 }
 
@@ -4434,11 +4428,21 @@ function dashboardSpielBearbeitenSpeichern() {
 
 /* ===== TORSCHÜTZEN-STATISTIK ===== */
 
+let dbAlleTorschuetzen = false;
+
+function dbTorschuetzenUmschalten() {
+  dbAlleTorschuetzen = !dbAlleTorschuetzen;
+  torschuetzenR();
+}
+
+// Torschützen-Rangliste (Dashboard)
 function torschuetzenR() {
-  const el = document.getElementById('torschuetzen-content');
+  const el = document.getElementById('db-torschuetzen');
   if (!el) return;
 
   const spiele = Array.isArray(S.dashboardSpiele) ? S.dashboardSpiele : [];
+  if (!spiele.length) { el.innerHTML = ''; return; }
+
   const stat = {};
   let toreGesamt = 0, ohneSchuetze = 0;
   const ohneDaten = spiele.filter(sp => !Array.isArray(sp.tore)).length;
@@ -4459,6 +4463,7 @@ function torschuetzenR() {
 
   const liste = Object.values(stat).sort((a, b) => b.tore - a.tore || a.name.localeCompare(b.name, 'de'));
   const max = liste.length ? liste[0].tore : 1;
+  const LIMIT = 5;
 
   let rang = 0, letzte = null;
   const zeilen = liste.map((x, i) => {
@@ -4475,34 +4480,32 @@ function torschuetzenR() {
       + '<div style="height:6px;border-radius:3px;background:var(--bg);overflow:hidden">'
       + '<div style="height:100%;width:' + Math.round(x.tore / max * 100) + '%;background:var(--sec);border-radius:3px"></div></div>'
       + '</li>';
-  }).join('');
+  });
 
-  const stats = [
-    { icon: '📅', w: spiele.length,  l: 'Spiele gespeichert' },
-    { icon: '⚽', w: toreGesamt,      l: 'Tore erfasst' },
-    { icon: '🥇', w: liste.length,    l: 'Torschützen' }
-  ];
+  let html = '<div style="margin-bottom:.9rem">'
+    + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">'
+    + '<span style="font-size:1rem;font-weight:800;color:var(--prim)">🥇 Torschützen</span>'
+    + '<span style="font-size:.6875rem;color:var(--mut)">' + toreGesamt + ' Tore in ' + spiele.length + ' Spiel' + (spiele.length !== 1 ? 'en' : '') + '</span></div>';
 
-  let html = '<div class="stats-g">' + stats.map(x =>
-    '<div class="stat-k"><div class="stat-icon">' + x.icon + '</div><div class="stat-w">' + x.w + '</div><div class="stat-l">' + x.l + '</div></div>'
-  ).join('') + '</div>';
-
-  if (!spiele.length) {
-    html += '<div class="leer"><div class="leer-icon">🥇</div><p>Noch keine Spiele gespeichert.<br>Tippe im Match-Tab auf „+ Zum Dashboard“.</p></div>';
-  } else if (!liste.length) {
-    html += '<div class="leer"><div class="leer-icon">⚽</div><p>Noch keine Torschützen erfasst.</p></div>';
+  if (!liste.length) {
+    html += '<p style="color:var(--mut);font-size:.8125rem">Noch keine Torschützen erfasst.</p>';
   } else {
-    html += '<ul style="list-style:none;display:flex;flex-direction:column;gap:.375rem">' + zeilen + '</ul>';
+    html += '<ul style="list-style:none;display:flex;flex-direction:column;gap:.375rem">'
+      + zeilen.slice(0, dbAlleTorschuetzen ? zeilen.length : LIMIT).join('') + '</ul>';
+    if (zeilen.length > LIMIT) {
+      html += '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-top:.5rem" onclick="dbTorschuetzenUmschalten()">'
+        + (dbAlleTorschuetzen ? 'Weniger anzeigen' : 'Alle ' + zeilen.length + ' Torschützen anzeigen') + '</button>';
+    }
   }
 
   const hinweise = [];
   if (ohneSchuetze) hinweise.push(ohneSchuetze + ' Tor' + (ohneSchuetze !== 1 ? 'e' : '') + ' ohne gewählten Torschützen');
-  if (ohneDaten) hinweise.push(ohneDaten + ' älteres Spiel' + (ohneDaten !== 1 ? 'e' : '') + ' ohne Torschützen-Daten (bitte im Match-Tab nochmal „+ Zum Dashboard“ tippen, falls die Tore noch im Spielstand stehen)');
+  if (ohneDaten) hinweise.push(ohneDaten + ' älteres Spiel' + (ohneDaten !== 1 ? 'e' : '') + ' ohne Torschützen-Daten (zum Ergänzen das Spiel mit ✏️ bearbeiten)');
   if (hinweise.length) {
-    html += '<p style="color:var(--mut);font-size:.75rem;margin-top:.75rem">ℹ️ ' + hinweise.map(h).join('<br>ℹ️ ') + '</p>';
+    html += '<p style="color:var(--mut);font-size:.75rem;margin-top:.625rem">ℹ️ ' + hinweise.map(h).join('<br>ℹ️ ') + '</p>';
   }
 
-  el.innerHTML = html;
+  el.innerHTML = html + '</div>';
 }
 
 /* ===== ALLES RENDERN ===== */
