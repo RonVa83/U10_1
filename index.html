@@ -233,6 +233,9 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .auf-ava { display: inline-flex; border: 2px solid #fff; border-radius: 50%; }
 .auf-info { font-size: .625rem; color: rgba(255,255,255,.85); text-shadow: 0 1px 2px rgba(0,0,0,.45); }
 .auf-info.warn { color: #fde68a; font-weight: 700; }
+.auf-klein { padding: .625rem .25rem; gap: .75rem; box-shadow: none; }
+.auf-klein .auf-leer { width: 38px; height: 38px; font-size: 1rem; }
+.auf-klein .auf-name { font-size: .625rem; max-width: 70px; }
 .auf-leer {
   width: 52px; height: 52px; border-radius: 50%; border: 2px dashed rgba(255,255,255,.75);
   display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: #fff;
@@ -866,7 +869,11 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
     <!-- Match -->
     <section id="tab-timer" class="tab-s">
-      <div class="sek-h"><h2>⏱️ Match</h2></div>
+      <div class="sek-h">
+        <h2>⏱️ Match</h2>
+        <div class="sek-h-act"><button id="ton-btn" class="btn btn-out btn-sm" type="button" onclick="tonUmschalten()" aria-label="Signalton">🔔</button></div>
+      </div>
+      <div id="timer-aufstellung"></div>
       <div id="timer-panel"></div>
     </section>
 
@@ -1003,6 +1010,7 @@ let aktiverPlan = null;
 let modal = { typ:null, id:null, sterne:{} };
 let toastTimer = null;
 let einsatzPrevQ = -1;
+let matchAufQ = -1;   // Viertel, für das die Aufstellung im Match-Reiter zuletzt gezeichnet wurde
 const spielTimer = {
   viertel: 4,
   dauerSek: 15 * 60,
@@ -1432,9 +1440,11 @@ function spielTimerTick() {
 
     if (spielTimer.aktuelle >= spielTimer.viertel) {
       vibrieren([600, 200, 600, 200, 600]); // Spielende: 3x lang
+      signalton(3);
       toastZ('⏱️ Spiel beendet','ok');
     } else {
       vibrieren([500, 200, 500]); // Viertelende: 2x
+      signalton(2);
       spielTimer.aktuelle += 1;
       spielTimer.remaining = spielTimer.dauerSek;
       toastZ(`✅ Viertel ${spielTimer.aktuelle} bereit`,`ok`);
@@ -1456,6 +1466,7 @@ function spielTimerStart() {
   }
   spielTimer.endTs = Date.now() + spielTimer.remaining * 1000;
   spielTimer.running = true;
+  audioFreischalten(); // Ton erst nach einem Tipp erlaubt
   wakeLockAn();
   if (!spielTimer.intervalId) {
     spielTimer.intervalId = setInterval(spielTimerTick, 500);
@@ -1555,6 +1566,7 @@ function spielTimerMarkup() {
 function spielTimerRender() {
   const el = document.getElementById('timer-panel');
   if (!el) return;
+  if (matchAufQ !== spielTimer.aktuelle) matchAufstellungR();   // neues Viertel → Aufstellung nachziehen
 
   el.innerHTML = `
     <div class="match-hub-card">
@@ -2584,6 +2596,148 @@ function spielplanungPlanR() {
   einsatzR();
 }
 
+/* ===== AUFSTELLUNG IM MATCH-REITER + SIGNALTON ===== */
+
+let audioCtx = null;
+
+function audioFreischalten() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    audioCtx = audioCtx || new AC();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (_) {}
+}
+
+// Kurze Pieptöne: 2× am Viertelende, 3× am Spielende
+function signalton(anzahl) {
+  if (S.einstellungen && S.einstellungen.ton === false) return;
+  try {
+    audioFreischalten();
+    if (!audioCtx) return;
+    let t = audioCtx.currentTime;
+    for (let i = 0; i < anzahl; i++) {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      o.connect(g); g.connect(audioCtx.destination);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.5, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+      o.start(t); o.stop(t + 0.5);
+      t += 0.65;
+    }
+  } catch (_) {}
+}
+
+function tonButtonR() {
+  const b = document.getElementById('ton-btn');
+  if (!b) return;
+  const an = !(S.einstellungen && S.einstellungen.ton === false);
+  b.textContent = an ? '🔔' : '🔕';
+  b.setAttribute('aria-label', an ? 'Signalton an' : 'Signalton aus');
+}
+
+function tonUmschalten() {
+  if (!S.einstellungen || typeof S.einstellungen !== 'object') S.einstellungen = {};
+  S.einstellungen.ton = (S.einstellungen.ton === false);
+  speichern();
+  tonButtonR();
+  if (S.einstellungen.ton) { audioFreischalten(); signalton(1); }
+  toastZ(S.einstellungen.ton ? '🔔 Signalton an' : '🔕 Signalton aus', 'ok');
+}
+
+// Aufstellung für Team + Viertel: erst die selbst erstellte, sonst der automatische Einsatzplan
+function matchAufstellungDaten(team, q) {
+  const A = S.aufstellung;
+  const manuell = A && A.lineup && Array.isArray(A.lineup[team]) && Array.isArray(A.lineup[team][q]) ? A.lineup[team][q] : null;
+  if (manuell && manuell.some(Boolean)) return { row: manuell.slice(0, 7), quelle: 'Aufstellung' };
+  const src = team === 'A' ? S.spielplanung?.lineupA : S.spielplanung?.lineupB;
+  if (src && Array.isArray(src[q]) && src[q].some(Boolean)) return { row: src[q].slice(0, 7), quelle: 'Einsatzplan' };
+  return null;
+}
+
+function matchAufToggle() {
+  if (!S.einstellungen || typeof S.einstellungen !== 'object') S.einstellungen = {};
+  S.einstellungen.matchAufOffen = !S.einstellungen.matchAufOffen;
+  speichern();
+  matchAufstellungR();
+}
+
+function matchAufTeam(t) {
+  S.aufstellung.team = t;
+  speichern();
+  matchAufstellungR();
+}
+
+function matchPitchHtml(row) {
+  const slots = aufSlots((S.aufstellung && S.aufstellung.formation) || '2-3-1');
+  const byId = id => id ? S.spieler.find(x => x.id === id) : null;
+  const slotHtml = sl => {
+    const sp = byId(row[sl.idx]);
+    return '<div class="auf-slot" style="cursor:default">'
+      + (sp ? '<span class="auf-ava">' + avatarHtml(sp.name, sp.foto, 38) + '</span>' : '<span class="auf-leer">–</span>')
+      + '<span class="auf-name">' + h(sp ? sp.name : '') + '</span>'
+      + '<span class="auf-info">' + h(sl.kurz) + '</span></div>';
+  };
+  const reihenAnz = slots.reduce((m, sl) => Math.max(m, sl.reihe === undefined ? -1 : sl.reihe), -1) + 1;
+  const reihen = [];
+  for (let ri = 0; ri < reihenAnz; ri++) {
+    reihen.push('<div class="auf-row">' + slots.filter(sl => sl.reihe === ri).map(slotHtml).join('') + '</div>');
+  }
+  return '<div class="auf-pitch auf-klein">' + reihen.reverse().join('') + '<div class="auf-row">' + slotHtml(slots[0]) + '</div></div>';
+}
+
+function matchAufstellungR() {
+  const el = document.getElementById('timer-aufstellung');
+  if (!el) return;
+  matchAufQ = spielTimer.aktuelle;
+  const A = S.aufstellung;
+  const team = A.team === 'B' ? 'B' : 'A';
+  const q = Math.max(0, spielTimer.aktuelle - 1);
+  const offen = !!(S.einstellungen && S.einstellungen.matchAufOffen);
+  const aktuell = matchAufstellungDaten(team, q);
+  const naechste = matchAufstellungDaten(team, q + 1);
+  const name = id => (S.spieler.find(x => x.id === id) || {}).name || '?';
+
+  let rein = [], raus = [];
+  if (aktuell && naechste) {
+    const cur = new Set(aktuell.row.filter(Boolean)), nxt = new Set(naechste.row.filter(Boolean));
+    rein = [...nxt].filter(id => !cur.has(id));
+    raus = [...cur].filter(id => !nxt.has(id));
+  }
+  const wechselText = (aktuell && naechste)
+    ? (rein.length || raus.length
+        ? 'V' + (q + 2) + ': ' + [rein.length ? '⬆ ' + rein.map(name).join(', ') : '', raus.length ? '⬇ ' + raus.map(name).join(', ') : ''].filter(Boolean).join('  ')
+        : 'V' + (q + 2) + ': keine Wechsel')
+    : '';
+
+  const kurz = aktuell ? (wechselText || 'TW ' + name(aktuell.row[0])) : 'noch keine Aufstellung';
+  let body = '';
+  if (offen) {
+    const teamBtn = (t, icon) => '<button class="timer-quarter-btn' + (team === t ? ' active' : '') + '" type="button" onclick="matchAufTeam(\'' + t + '\')">' + icon + ' Team ' + t + '</button>';
+    body = '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin:.625rem 0">' + teamBtn('A', '🔵') + teamBtn('B', '🔴') + '</div>';
+    if (aktuell) {
+      const imFeld = new Set(aktuell.row.filter(Boolean));
+      const bank = aufKader(team).filter(x => !imFeld.has(x.id));
+      body += matchPitchHtml(aktuell.row)
+        + '<div style="font-size:.6875rem;color:var(--mut);margin-top:.25rem">Quelle: ' + aktuell.quelle + '</div>'
+        + (bank.length ? '<div style="font-size:.8125rem;margin-top:.5rem"><b>🪑 Bank:</b> ' + bank.map(x => h(x.name)).join(', ') + '</div>' : '')
+        + (wechselText ? '<div style="font-size:.8125rem;margin-top:.375rem"><b>🔄 ' + h(wechselText) + '</b></div>' : '');
+    } else {
+      body += '<p style="color:var(--mut);font-size:.8125rem">Für V' + (q + 1) + ' (Team ' + team + ') gibt es noch keine Aufstellung. Erstelle sie im Reiter „Spiele“.</p>';
+    }
+  }
+
+  el.innerHTML = '<div class="karte" style="margin-bottom:.75rem;padding:.625rem .75rem">'
+    + '<button type="button" onclick="matchAufToggle()" style="display:flex;width:100%;align-items:center;gap:.5rem;background:none;border:none;text-align:left;cursor:pointer;color:var(--txt);padding:0;min-height:32px;touch-action:manipulation">'
+    + '<span style="font-weight:800;color:var(--prim);white-space:nowrap">🧩 V' + (q + 1) + '</span>'
+    + '<span style="flex:1;min-width:0;font-size:.75rem;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + h(kurz) + '</span>'
+    + '<span style="color:var(--mut)">' + (offen ? '▲' : '▼') + '</span></button>'
+    + body + '</div>';
+}
+
 /* ===== AUFSTELLUNG (selbst erstellen) ===== */
 
 const FORMATIONEN = { '2-3-1':[2,3,1], '3-2-1':[3,2,1], '2-2-2':[2,1,1,2], '3-1-2':[3,1,2], '1-3-2':[1,3,2] }; // 2-2-2: Mittelfeld übereinander in der Mitte
@@ -3316,6 +3470,8 @@ function tabW(id) {
 
   if (id === 'timer') {
     spielTimerRender();
+    matchAufstellungR();
+    tonButtonR();
   }
   if (id === 'training') trainingR();
   if (id === 'trainingsplan') planR();
@@ -4131,7 +4287,7 @@ function torschuetzenR() {
 
 /* ===== ALLES RENDERN ===== */
 function allesR() {
-  dbR(); spielerR(); trainerR(); trainingR(); planR(); spielplanungR(); gegnerR(); torschuetzenR();
+  dbR(); spielerR(); trainerR(); trainingR(); planR(); spielplanungR(); gegnerR(); torschuetzenR(); matchAufstellungR(); tonButtonR();
 }
 
 /* ===== EVENTS ===== */
