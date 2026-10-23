@@ -93,7 +93,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 #bottom-nav .nav-tab.active { color: var(--sec); }
 #bottom-nav .nav-tab:active { background: rgba(37,99,235,.07); transform: scale(.97); }
 .nav-icon  { font-size: 1.375rem; line-height: 1; }
-.nav-label { font-size: .5625rem; font-weight: 500; }
+.nav-label { font-size: .6875rem; font-weight: 600; }
 
 /* ===== HAUPT-INHALTSBEREICH ===== */
 #main-content {
@@ -295,11 +295,11 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .leer-icon { font-size: 3rem; margin-bottom: .75rem; }
 
 /* ===== DASHBOARD STATS ===== */
-.stats-g { display: grid; grid-template-columns: repeat(2, 1fr); gap: .875rem; margin-bottom: 1.25rem; }
-.stat-k { background: var(--surf); border-radius: var(--r); padding: 1.25rem 1rem; box-shadow: var(--sh); border: 1px solid var(--brd); text-align: center; }
-.stat-icon { font-size: 1.75rem; margin-bottom: .35rem; }
-.stat-w    { font-size: 2rem; font-weight: 800; color: var(--prim); line-height: 1; margin-bottom: .25rem; }
-.stat-l    { font-size: .8125rem; color: var(--mut); font-weight: 500; }
+.stats-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: .5rem; margin-bottom: 1rem; }
+.stat-k { background: var(--surf); border-radius: var(--r); padding: .625rem .25rem; box-shadow: var(--sh); border: 1px solid var(--brd); text-align: center; }
+.stat-icon { font-size: 1.25rem; margin-bottom: .2rem; }
+.stat-w    { font-size: 1.5rem; font-weight: 800; color: var(--prim); line-height: 1; margin-bottom: .2rem; }
+.stat-l    { font-size: .6875rem; color: var(--mut); font-weight: 600; }
 .db-match-list { display: flex; flex-direction: column; gap: .4rem; margin-bottom: .9rem; }
 .db-match-row {
   background: var(--surf); border: 1px solid var(--brd); border-radius: var(--r);
@@ -797,7 +797,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 /* ===== RESPONSIV: 413px (S25-Breakpoint) ===== */
 @media (min-width: 413px) {
   .karten-grid { grid-template-columns: repeat(2, 1fr); }
-  .stats-g     { grid-template-columns: repeat(3, 1fr); }
 }
 
 /* ===== RESPONSIV: 768px+ Desktop ===== */
@@ -808,7 +807,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   #main-content { padding-bottom: 0; }
   .tab-s       { padding: 1.5rem; }
   .karten-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
-  .stats-g     { grid-template-columns: repeat(3, 1fr); }
   .modal-box   { border-radius: var(--r); margin: auto; max-height: 85dvh; }
   .modal-ov    { align-items: center; padding: 1.5rem; }
   .toast       { left: auto; right: 1.5rem; top: 1.5rem; margin: 0; }
@@ -816,7 +814,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 /* ===== RESPONSIV: 1024px+ ===== */
 @media (min-width: 1024px) {
-  .stats-g     { grid-template-columns: repeat(6, 1fr); }
   .karten-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
   .tab-s       { padding: 2rem; }
 }
@@ -856,16 +853,11 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
     <section id="tab-dashboard" class="tab-s active">
       <div class="sek-h">
         <h2>📊 Dashboard</h2>
-        <div class="sek-h-act">
-          <a class="btn btn-out btn-sm" href="https://www.dfbnet.org/egmweb/mod_egm/webflow.do?event=VEREINSMELDER_NEW&amp;dmg_menu=10104" target="_blank" rel="noopener" aria-label="Ergebnis melden (DFBnet)">📤 DFBnet</a>
-          <button class="btn btn-out btn-sm" onclick="jsonExportieren()">💾</button>
-          <button class="btn btn-out btn-sm" onclick="document.getElementById('file-import').click()">📂</button>
-        </div>
       </div>
       <div id="db-stats"></div>
+      <div id="db-hint"></div>
       <div id="db-spiele"></div>
       <div id="db-tabelle"></div>
-      <div id="db-hint"></div>
     </section>
 
     <!-- Match -->
@@ -943,17 +935,11 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
     <button class="nav-tab" data-tab="training" aria-label="Training">
       <span class="nav-icon">⚽</span><span class="nav-label">Training</span>
     </button>
-    <button class="nav-tab" data-tab="trainingsplan" aria-label="Trainingsplan">
-      <span class="nav-icon">📋</span><span class="nav-label">Plan</span>
-    </button>
     <button class="nav-tab" data-tab="spielplanung" aria-label="Spielplanung">
-      <span class="nav-icon">⚽</span><span class="nav-label">Spiele</span>
+      <span class="nav-icon">🧩</span><span class="nav-label">Spiele</span>
     </button>
-    <button class="nav-tab" data-tab="gegner" aria-label="Gegner-Analyse">
-      <span class="nav-icon">🔍</span><span class="nav-label">Gegner</span>
-    </button>
-    <button class="nav-tab" data-tab="torschuetzen" aria-label="Torschützen">
-      <span class="nav-icon">🥇</span><span class="nav-label">Tore</span>
+    <button class="nav-tab" id="nav-mehr" type="button" onclick="mehrMenueOeffnen()" aria-label="Mehr">
+      <span class="nav-icon">☰</span><span class="nav-label">Mehr</span>
     </button>
   </nav>
 
@@ -1198,9 +1184,12 @@ function spielerEdit(id, d) {
 }
 
 function spielerDel(id) {
-  if (!confirm('Spieler wirklich löschen?')) return;
-  S.spieler = S.spieler.filter(s => s.id !== id);
-  speichern(); spielerR(); dbR();
+  const sp = S.spieler.find(s => s.id === id);
+  if (!sp) return;
+  bestaetigen('Spieler löschen', '„' + sp.name + '“ wirklich löschen?', 'Löschen', () => {
+    S.spieler = S.spieler.filter(s => s.id !== id);
+    speichern(); spielerR(document.getElementById('spieler-suche')?.value); dbR();
+  });
 }
 
 function spielerAnw(id) {
@@ -1299,11 +1288,14 @@ function trainerEdit(id, d) {
 }
 
 function trainerDel(id) {
-  if (!confirm('Trainer wirklich löschen?')) return;
-  S.trainer = S.trainer.filter(t => t.id !== id);
-  syncMannschaften();
-  speichern(); trainerR(); dbR();
-  if (document.getElementById('tab-training').classList.contains('active')) trainingR();
+  const tr = S.trainer.find(t => t.id === id);
+  if (!tr) return;
+  bestaetigen('Trainer löschen', '„' + tr.name + '“ wirklich löschen?', 'Löschen', () => {
+    S.trainer = S.trainer.filter(t => t.id !== id);
+    syncMannschaften();
+    speichern(); trainerR(); dbR();
+    if (document.getElementById('tab-training').classList.contains('active')) trainingR();
+  });
 }
 
 function trainerAnw(id) {
@@ -1580,6 +1572,13 @@ function dashboardErgebnisKlasse(spiel) {
   return unsere > gegner ? ' win' : unsere < gegner ? ' loss' : '';
 }
 
+let dbAlleSpiele = false;
+
+function dashboardSpieleAlleUmschalten() {
+  dbAlleSpiele = !dbAlleSpiele;
+  dashboardSpieleRender();
+}
+
 function dashboardSpieleRender() {
   const el = document.getElementById('db-spiele');
   if (!el) return;
@@ -1590,7 +1589,11 @@ function dashboardSpieleRender() {
     return;
   }
 
-  el.innerHTML = `<div class="db-match-list">${spiele.map((spiel, idx) => `
+  const LIMIT = 3;
+  const sichtbar = spiele.map((spiel, idx) => ({ spiel, idx })).slice(0, dbAlleSpiele ? spiele.length : LIMIT);
+
+  el.innerHTML = `<div class="ber-ti" style="margin-bottom:.375rem">⚽ Letzte Spiele</div>
+    <div class="db-match-list">${sichtbar.map(({ spiel, idx }) => `
     <div class="db-match-row${dashboardErgebnisKlasse(spiel)}">
       <div class="db-match-head">
         <span class="db-match-side">${h(spiel.unsereSeite === 'heim' ? 'Heim' : 'Auswärts')}</span>
@@ -1605,7 +1608,10 @@ function dashboardSpieleRender() {
         <span class="db-match-score">${spiel.heim} - ${spiel.auswaerts}</span>
       </div>
     </div>
-  `).join('')}</div>`;
+  `).join('')}</div>`
+    + (spiele.length > LIMIT
+        ? `<button class="btn btn-out btn-sm btn-full" type="button" style="margin-bottom:.9rem" onclick="dashboardSpieleAlleUmschalten()">${dbAlleSpiele ? 'Weniger anzeigen' : 'Alle ' + spiele.length + ' Spiele anzeigen'}</button>`
+        : '');
 }
 
 function dashboardSpielSpeichern() {
@@ -1650,10 +1656,14 @@ function dashboardSpielSpeichern() {
 
 function dashboardSpielLoeschen(key) {
   if (!Array.isArray(S.dashboardSpiele) || !S.dashboardSpiele.length) return;
-  S.dashboardSpiele = S.dashboardSpiele.filter(spiel => spiel.key !== key);
-  speichern();
-  dbR();
-  toastZ('✅ Ergebnis aus Dashboard gelöscht', 'ok');
+  const sp = S.dashboardSpiele.find(x => x.key === key);
+  if (!sp) return;
+  bestaetigen('Ergebnis löschen', sp.heimName + ' ' + sp.heim + ' - ' + sp.auswaerts + ' ' + sp.auswaertsName + ' wirklich löschen?', 'Löschen', () => {
+    S.dashboardSpiele = S.dashboardSpiele.filter(spiel => spiel.key !== key);
+    speichern();
+    dbR();
+    toastZ('✅ Ergebnis aus Dashboard gelöscht', 'ok');
+  });
 }
 
 function dbR() {
@@ -1666,10 +1676,10 @@ function dbR() {
   const weB = S.spieler.filter(s => s.verfuegbarWE && s.spielteam === 'B').length;
 
   const stats = [
-    {icon:'⚽', w:S.spieler.length, l:'Spieler gesamt'},
-    {icon:'✅', w:aSp,              l:'Spieler anwesend'},
-    {icon:'🔵', w:weA,             l:'Spiel Team A'},
-    {icon:'🔴', w:weB,             l:'Spiel Team B'},
+    {icon:'⚽', w:S.spieler.length, l:'Spieler'},
+    {icon:'✅', w:aSp,              l:'Anwesend'},
+    {icon:'🔵', w:weA,             l:'Team A'},
+    {icon:'🔴', w:weB,             l:'Team B'},
   ];
 
   const se = document.getElementById('db-stats');
@@ -1692,8 +1702,8 @@ function dbR() {
   if (S.spieler.length) {
     const lb = S.einstellungen && S.einstellungen.letztesBackup;
     const tage = lb && !isNaN(new Date(lb).getTime()) ? Math.floor((Date.now() - new Date(lb).getTime()) / 86400000) : null;
-    if (tage === null)  hints.push('💾 Noch keine Datensicherung gemacht – tippe oben auf 💾.');
-    else if (tage >= 14) hints.push('💾 Letzte Datensicherung vor ' + tage + ' Tagen – tippe oben auf 💾.');
+    if (tage === null)  hints.push('💾 Noch keine Datensicherung gemacht – tippe unten auf ☰ Mehr → Daten sichern.');
+    else if (tage >= 14) hints.push('💾 Letzte Datensicherung vor ' + tage + ' Tagen – tippe unten auf ☰ Mehr → Daten sichern.');
   }
 
   const he = document.getElementById('db-hint');
@@ -2591,6 +2601,39 @@ function spielplanungPlanR() {
   einsatzR();
 }
 
+/* ===== MEHR-MENÜ (untere Navigation) ===== */
+
+function mehrGehe(id) {
+  modalSch();
+  tabW(id);
+}
+
+function mehrMenueOeffnen() {
+  modal = { typ: 'mehr', id: null, sterne: {} };
+  document.getElementById('modal-ti').textContent = 'Mehr';
+  const stil = 'justify-content:flex-start;gap:.75rem;min-height:52px;text-align:left';
+  const eintrag = (icon, text, klick) =>
+    '<button class="btn btn-out btn-full" type="button" style="' + stil + '" onclick="' + klick + '"><span style="font-size:1.25rem">' + icon + '</span>' + text + '</button>';
+  const lb = S.einstellungen && S.einstellungen.letztesBackup;
+  const lbText = lb && !isNaN(new Date(lb).getTime()) ? new Date(lb).toLocaleDateString('de-DE') : 'noch nie';
+  const titel = t => '<div style="font-size:.6875rem;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin:.5rem 0 .125rem">' + t + '</div>';
+  document.getElementById('modal-body').innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:.5rem">'
+    + titel('Seiten')
+    + eintrag('📋', 'Trainingsplan', "mehrGehe('trainingsplan')")
+    + eintrag('🔍', 'Gegner-Analyse', "mehrGehe('gegner')")
+    + eintrag('🥇', 'Torschützen', "mehrGehe('torschuetzen')")
+    + titel('Werkzeuge')
+    + '<a class="btn btn-out btn-full" style="' + stil + '" href="' + DFBNET_URL.replace(/&/g, '&amp;') + '" target="_blank" rel="noopener" onclick="modalSch()"><span style="font-size:1.25rem">📤</span>Ergebnis melden (DFBnet)</a>'
+    + eintrag('💾', 'Daten sichern (Export)', 'modalSch();jsonExportieren()')
+    + eintrag('📂', 'Daten importieren', "modalSch();document.getElementById('file-import').click()")
+    + '<div style="font-size:.75rem;color:var(--mut);margin:.125rem .25rem 0">Letzte Sicherung: ' + h(lbText) + '</div>'
+    + '<button class="btn btn-prim btn-full" type="button" style="margin-top:.5rem" onclick="modalSch()">Schließen</button>'
+    + '</div>';
+  modalFooterSichtbar(false);
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+
 /* ===== AUFSTELLUNG IM MATCH-REITER + SIGNALTON ===== */
 
 let audioCtx = null;
@@ -3459,6 +3502,8 @@ function tabW(id) {
   aktiverTab = id;
   document.querySelectorAll('.tab-s').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  const mehrBtn = document.getElementById('nav-mehr');
+  if (mehrBtn) mehrBtn.classList.toggle('active', ['trainingsplan', 'gegner', 'torschuetzen'].includes(id));
 
   const sek = document.getElementById('tab-' + id);
   if (sek) sek.classList.add('active');
