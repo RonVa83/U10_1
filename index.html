@@ -1232,7 +1232,7 @@ function spFeldAend(id, feld, wert) {
     if (feld === 'position' && s.position2 === wert) s.position2 = null;
   }
   speichern();
-  if (feld === 'position' || feld === 'position2') spielerR(document.getElementById('spieler-suche')?.value);
+  if (feld === 'position' || feld === 'position2' || feld === 'starkerFuss') spielerR(document.getElementById('spieler-suche')?.value);
 }
 
 function spNiveau(id, val) {
@@ -1254,14 +1254,12 @@ function spielerZeile(s) {
     const v = i+1 <= s.niveau;
     return `<span class="stern${v?'':' leer'}" onclick="spNiveau('${s.id}',${i+1})">${v?'★':'☆'}</span>`;
   }).join('');
-  const posOpts = (wert, mitLeer) =>
-    (mitLeer ? `<option value=""${!wert?' selected':''}>–</option>` : '')
-    + POSITIONEN.map(p => `<option value="${p}"${wert===p?' selected':''}>${POS_SHORT[p]}</option>`).join('');
-  const lbl = t => `<span style="font-size:.625rem;font-weight:700;color:var(--mut);text-transform:uppercase">${t}</span>`;
+  const posKurz = [s.position, s.position2].filter(Boolean).map(p => POS_SHORT[p] || '?').join('/');
+  const fussKurz = FUSS_SHORT[s.starkerFuss] || '?';
   const btnStil = 'min-width:30px;padding:0;min-height:28px;font-size:1.1rem;border-radius:6px;border-width:1.5px';
   return `<li class="spl-z" style="flex-direction:column;align-items:stretch;gap:.3rem;padding:.375rem">
     <div style="display:flex;align-items:center;gap:.25rem">
-      <button class="foto-btn" type="button" onclick="spielerFotoModal('${s.id}')" aria-label="Foto">${avatarHtml(s.name, s.foto, 28)}</button>
+      <button class="foto-btn" type="button" onclick="spielerFotoModal('${s.id}')" aria-label="Profil öffnen">${avatarHtml(s.name, s.foto, 28)}</button>
       <input class="sp-inp" type="text" value="${h(s.name)}" aria-label="Name" maxlength="60" autocapitalize="words" autocomplete="off"
              onblur="spNameBlur(this,'${s.id}')" onkeydown="if(event.key==='Enter')this.blur()">
       <button class="anw-btn ${s.anwesend?'an':'ab'}" data-anwsp="${s.id}" onclick="spielerAnw('${s.id}')" aria-label="${s.anwesend?'Anwesend':'Abwesend'}" style="${btnStil}">${s.anwesend?'✅':'⭕'}</button>
@@ -1269,14 +1267,8 @@ function spielerZeile(s) {
       <button class="ib" onclick="spielerRunter('${s.id}')" aria-label="Nach unten" style="width:28px;height:28px;font-size:.8rem">⬇️</button>
       <button class="ib" onclick="spielerDel('${s.id}')" aria-label="Löschen" style="width:28px;height:28px;font-size:.8rem">🗑️</button>
     </div>
-    <div style="display:flex;align-items:center;gap:.25rem;flex-wrap:wrap;padding-left:2rem">
-      ${lbl('Pos.')}
-      <select class="sp-sel-sm" style="max-width:56px" aria-label="Erste Position (stärkste)" onchange="spFeldAend('${s.id}','position',this.value)">${posOpts(s.position,false)}</select>
-      <select class="sp-sel-sm" style="max-width:56px" aria-label="Zweite Position" onchange="spFeldAend('${s.id}','position2',this.value)">${posOpts(s.position2,true)}</select>
-      ${lbl('Fuß')}
-      <select class="sp-sel-sm" style="max-width:56px" aria-label="Starker Fuß" onchange="spFeldAend('${s.id}','starkerFuss',this.value)">
-        ${FUSS.map(f => `<option value="${f}"${s.starkerFuss===f?' selected':''}>${FUSS_SHORT[f]}</option>`).join('')}
-      </select>
+    <div style="display:flex;align-items:center;gap:.5rem;padding-left:2rem">
+      <button type="button" class="badge b-pos" style="border:none;cursor:pointer;touch-action:manipulation" onclick="spielerFotoModal('${s.id}')" aria-label="Position und starken Fuß im Profil ändern">${h(posKurz)} · ${h(fussKurz)} ✏️</button>
       <span class="sterne sterne-s" data-sp="${s.id}" style="margin-left:auto">${sterne}</span>
     </div>
   </li>`;
@@ -3782,13 +3774,27 @@ function spielerNotizSpeichern(id, wert) {
   speichern();
 }
 
+function profilFeldAend(id, feld, wert) {
+  spFeldAend(id, feld, wert);
+  spielerFotoModal(id);
+}
+
+function profilNiveau(id, wert) {
+  spNiveau(id, wert);
+  spielerFotoModal(id);
+}
+
 // Spielerprofil: Foto, Positionen, Zahlen und private Notiz
 function spielerFotoModal(id) {
   const sp = S.spieler.find(x => x.id === id);
   if (!sp) return;
   modal = { typ: 'foto', id, sterne: {} };
   const st = spielerStatistik(sp.id, sp.name);
-  const pos = [sp.position, sp.position2].filter(Boolean).join(' / ');
+  const optP = (wert, leer) => (leer ? '<option value=""' + (!wert ? ' selected' : '') + '>– keine –</option>' : '')
+    + POSITIONEN.map(p => '<option' + (wert === p ? ' selected' : '') + '>' + p + '</option>').join('');
+  const niv = sp.niveau || 0;
+  const sterneEdit = '<span class="sterne sterne-i">' + [1, 2, 3, 4, 5].map(i =>
+    '<span class="stern' + (i <= niv ? '' : ' leer') + '" onclick="profilNiveau(\'' + sp.id + '\',' + i + ')">' + (i <= niv ? '★' : '☆') + '</span>').join('') + '</span>';
   const kachel = (w, l) => '<div style="flex:1;text-align:center;background:var(--bg);border:1px solid var(--brd);border-radius:var(--rs);padding:.5rem .25rem">'
     + '<div style="font-size:1.375rem;font-weight:800;color:var(--prim);line-height:1.1">' + w + '</div>'
     + '<div style="font-size:.625rem;color:var(--mut);font-weight:700;text-transform:uppercase;letter-spacing:.03em">' + l + '</div></div>';
@@ -3797,8 +3803,18 @@ function spielerFotoModal(id) {
     '<div style="display:flex;flex-direction:column;align-items:center;gap:.5rem;margin-bottom:1rem">'
     + avatarHtml(sp.name, sp.foto, 110)
     + '<div style="font-size:1.25rem;font-weight:800;color:var(--prim)">' + h(sp.name) + '</div>'
-    + '<div style="font-size:.875rem;color:var(--mut)">' + h(pos || '–') + ' · Starker Fuß: ' + h(sp.starkerFuss || '–') + '</div>'
-    + sHtml(sp.niveau || 0, 5, false)
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 .75rem">'
+    + '<div class="fg"><label for="profil-pos1">Erste Position (stärkste)</label>'
+    + '<select id="profil-pos1" onchange="profilFeldAend(\'' + sp.id + '\',\'position\',this.value)">' + optP(sp.position, false) + '</select></div>'
+    + '<div class="fg"><label for="profil-pos2">Zweite Position</label>'
+    + '<select id="profil-pos2" onchange="profilFeldAend(\'' + sp.id + '\',\'position2\',this.value)">' + optP(sp.position2, true) + '</select></div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 .75rem;align-items:end">'
+    + '<div class="fg"><label for="profil-fuss">Starker Fuß</label>'
+    + '<select id="profil-fuss" onchange="profilFeldAend(\'' + sp.id + '\',\'starkerFuss\',this.value)">'
+    + FUSS.map(f => '<option' + (sp.starkerFuss === f ? ' selected' : '') + '>' + f + '</option>').join('') + '</select></div>'
+    + '<div class="fg"><label>Niveau</label>' + sterneEdit + '</div>'
     + '</div>'
     + '<div style="display:flex;gap:.5rem;margin-bottom:1rem">'
     + kachel(st.tore, 'Tore') + kachel(st.spiele, 'Spiele mit Tor') + kachel(st.viertel, 'Viertel im Plan')
