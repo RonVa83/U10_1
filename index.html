@@ -859,6 +859,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="db-tabelle"></div>
       <div id="db-torschuetzen"></div>
       <div id="db-scorer"></div>
+      <div id="db-noten"></div>
     </section>
 
     <!-- Match -->
@@ -1689,6 +1690,7 @@ function dashboardSpieleRender() {
         <span class="db-match-side">${h(spiel.unsereSeite === 'heim' ? 'Heim' : 'Auswärts')}</span>
         <div class="db-match-head-right">
           <span class="db-match-date">${h(spiel.datum || '')}</span>
+          <button class="ib edit" type="button" onclick="notenModalOeffnen(${idx})" aria-label="Spielnoten vergeben" style="width:28px;height:28px;font-size:.8rem">📝</button>
           <button class="ib edit" type="button" onclick="dashboardSpielBearbeiten(${idx})" aria-label="Spiel bearbeiten" style="width:28px;height:28px;font-size:.8rem">✏️</button>
           <button class="ib" type="button" onclick="dashboardSpielLoeschen('${spiel.key}')" aria-label="Ergebnis löschen" style="width:28px;height:28px;font-size:.8rem">🗑️</button>
         </div>
@@ -1744,6 +1746,7 @@ function dashboardSpielSpeichern() {
 
   speichern();
   dbR();
+  if (idx < 0) bestaetigen('Spielnoten', 'Möchtest du den Spielern jetzt Noten für dieses Spiel geben?', 'Noten vergeben', () => notenModalOeffnen(0));
 }
 
 function dashboardSpielLoeschen(key) {
@@ -3705,6 +3708,7 @@ function modalSch() {
 function formSpeichern() {
   if (modal.typ === 'dashboardspiel') { dashboardSpielBearbeitenSpeichern(); return; }
   if (modal.typ === 'einstellungen') { einstellungenSpeichern(); return; }
+  if (modal.typ === 'noten') { notenSpeichern(); return; }
   const nameEl = document.getElementById('f-name');
   if (!nameEl?.value.trim()) {
     nameEl?.classList.add('err');
@@ -4105,6 +4109,7 @@ function spielerFotoModal(id) {
     + '<div style="display:flex;gap:.5rem;margin-bottom:1rem">'
     + kachel(st.tore, 'Tore') + kachel(st.vorlagen, 'Vorlagen') + kachel(st.spiele, 'Spiele mit Tor') + kachel(st.viertel, 'Viertel im Plan')
     + '</div>'
+    + notenProfilHtml(sp)
     + '<div class="fg"><label for="profil-notiz">Notiz (nur für dich)</label>'
     + '<textarea id="profil-notiz" rows="4" placeholder="z. B. Stärken, woran er arbeitet, Besonderheiten …" '
     + 'oninput="spielerNotizAend(\'' + sp.id + '\', this.value)" onchange="spielerNotizSpeichern(\'' + sp.id + '\', this.value)" '
@@ -4597,7 +4602,7 @@ function torschuetzenR() {
   if (!el) return;
 
   const spiele = Array.isArray(S.dashboardSpiele) ? S.dashboardSpiele : [];
-  if (!spiele.length) { el.innerHTML = ''; scorerR(); return; }
+  if (!spiele.length) { el.innerHTML = ''; scorerR(); notenR(); return; }
 
   const stat = {};
   let toreGesamt = 0, ohneSchuetze = 0;
@@ -4663,6 +4668,7 @@ function torschuetzenR() {
 
   el.innerHTML = html + '</div>';
   scorerR();
+  notenR();
 }
 
 let dbAlleScorer = false;
@@ -4722,6 +4728,196 @@ function scorerR() {
     + '<tbody>' + rows + '</tbody></table></div>'
     + (liste.length > LIMIT
         ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-top:.5rem" onclick="dbScorerUmschalten()">' + (dbAlleScorer ? 'Weniger anzeigen' : 'Alle ' + liste.length + ' anzeigen') + '</button>'
+        : '')
+    + '</div>';
+}
+
+/* ===== SPIELNOTEN (Schulnoten 1–6 je Spiel, mit gespielter Position) ===== */
+
+const NOTEN = [1, 2, 3, 4, 5, 6];
+const POS_FARBE = { Torwart: '#8b5cf6', Abwehr: '#2563EB', Mittelfeld: '#10B981', Sturm: '#F59E0B' };
+
+function notenFormat(x) { return (Math.round(x * 10) / 10).toFixed(1).replace('.', ','); }
+function notenFarbe(x) { return x <= 2.5 ? '#10B981' : x <= 4 ? '#d97706' : '#EF4444'; }
+
+// Alle Noten eines Spielers, älteste zuerst (Spiele sind neueste zuerst gespeichert)
+function notenEintraege(id, name) {
+  const nm = String(name || '').trim().toLowerCase();
+  const liste = [];
+  S.dashboardSpiele.slice().reverse().forEach(sp => (Array.isArray(sp.noten) ? sp.noten : []).forEach(n => {
+    const gleich = (n.spielerId && n.spielerId === id) || (nm && String(n.name || '').trim().toLowerCase() === nm);
+    if (!gleich || !Number(n.note)) return;
+    liste.push({
+      note: Number(n.note), pos: n.pos || '', datum: sp.datum || '',
+      gegner: sp.unsereSeite === 'heim' ? sp.auswaertsName : sp.heimName
+    });
+  }));
+  return liste;
+}
+
+function notenZusammenfassung(liste) {
+  const summe = liste.reduce((a, e) => a + e.note, 0);
+  const proPos = {};
+  liste.forEach(e => {
+    const k = e.pos || '–';
+    if (!proPos[k]) proPos[k] = { summe: 0, anzahl: 0 };
+    proPos[k].summe += e.note;
+    proPos[k].anzahl++;
+  });
+  return { schnitt: liste.length ? summe / liste.length : 0, anzahl: liste.length, proPos };
+}
+
+// Verlaufsdiagramm: oben = Note 1, unten = Note 6, Farbe/Buchstabe = gespielte Position
+function notenVerlaufSvg(liste) {
+  const L = liste.slice(-12);
+  const W = 300, H = 128, links = 22, rechts = 12, oben = 10, unten = 26;
+  const pw = W - links - rechts, ph = H - oben - unten;
+  const y = n => oben + (n - 1) / 5 * ph;
+  const x = i => L.length === 1 ? links + pw / 2 : links + i * pw / (L.length - 1);
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Verlauf der Spielnoten" style="display:block">';
+  NOTEN.forEach(n => {
+    svg += '<line x1="' + links + '" y1="' + y(n) + '" x2="' + (W - rechts) + '" y2="' + y(n) + '" stroke="#E2E8F0" stroke-width="1"/>'
+      + '<text x="' + (links - 6) + '" y="' + (y(n) + 3) + '" font-size="9" fill="#64748B" text-anchor="end">' + n + '</text>';
+  });
+  if (L.length > 1) {
+    svg += '<polyline fill="none" stroke="#2563EB" stroke-width="2" stroke-linejoin="round" points="' + L.map((e, i) => x(i) + ',' + y(e.note)).join(' ') + '"/>';
+  }
+  L.forEach((e, i) => {
+    const farbe = POS_FARBE[e.pos] || '#64748B';
+    svg += '<circle cx="' + x(i) + '" cy="' + y(e.note) + '" r="5" fill="' + farbe + '" stroke="#fff" stroke-width="1.5"/>'
+      + '<text x="' + x(i) + '" y="' + (H - 12) + '" font-size="8" fill="' + farbe + '" font-weight="700" text-anchor="middle">' + h(POS_SHORT[e.pos] || '–') + '</text>'
+      + '<text x="' + x(i) + '" y="' + (H - 3) + '" font-size="7" fill="#64748B" text-anchor="middle">' + h(String(e.datum).slice(0, 5)) + '</text>';
+  });
+  return svg + '</svg>';
+}
+
+function notenProfilHtml(sp) {
+  const liste = notenEintraege(sp.id, sp.name);
+  const kopf = '<div style="margin-bottom:1rem"><div style="font-size:.8125rem;font-weight:700;color:var(--txt);margin-bottom:.375rem">📈 Spielnoten</div>';
+  if (!liste.length) return kopf + '<p style="color:var(--mut);font-size:.8125rem">Noch keine Noten. Im Dashboard bei einem Spiel auf 📝 tippen.</p></div>';
+  const z = notenZusammenfassung(liste);
+  const pos = Object.keys(z.proPos).map(k =>
+    '<span style="display:inline-block;margin:0 .5rem .25rem 0;font-size:.75rem"><b style="color:' + (POS_FARBE[k] || '#64748B') + '">' + h(POS_SHORT[k] || k) + '</b> Ø '
+    + notenFormat(z.proPos[k].summe / z.proPos[k].anzahl) + ' (' + z.proPos[k].anzahl + '×)</span>').join('');
+  const letzte = liste.slice(-5).reverse().map(e =>
+    '<div style="display:flex;justify-content:space-between;font-size:.75rem;padding:.2rem 0;border-top:1px solid var(--brd)">'
+    + '<span style="color:var(--mut)">' + h(String(e.datum).slice(0, 6)) + ' gegen ' + h(e.gegner || '') + ' · ' + h(POS_SHORT[e.pos] || '–') + '</span>'
+    + '<b style="color:' + notenFarbe(e.note) + '">' + e.note + '</b></div>').join('');
+  return kopf
+    + '<div style="display:flex;align-items:baseline;gap:.5rem;margin-bottom:.25rem"><span style="font-size:1.5rem;font-weight:800;color:' + notenFarbe(z.schnitt) + '">Ø ' + notenFormat(z.schnitt) + '</span>'
+    + '<span style="font-size:.75rem;color:var(--mut)">' + z.anzahl + ' Spiel' + (z.anzahl !== 1 ? 'e' : '') + '</span></div>'
+    + notenVerlaufSvg(liste)
+    + '<div style="margin:.375rem 0">' + pos + '</div>' + letzte + '</div>';
+}
+
+/* --- Noten vergeben --- */
+
+function notenZeileHtml(s) {
+  const note = modal.noten[s.id] || 0;
+  const pos = modal.pos[s.id] || s.position || 'Mittelfeld';
+  const knoepfe = NOTEN.map(n =>
+    '<button type="button" class="timer-quarter-btn' + (note === n ? ' active' : '') + '" style="min-height:38px" onclick="notenSetzen(\'' + s.id + '\',' + n + ')">' + n + '</button>').join('');
+  return '<div id="nr-' + s.id + '" style="padding:.5rem 0;border-bottom:1px solid var(--brd)">'
+    + '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.375rem">' + avatarHtml(s.name, s.foto, 28)
+    + '<span style="flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + h(s.name) + '</span>'
+    + '<select aria-label="Gespielte Position" onchange="notenPos(\'' + s.id + '\', this.value)" style="border:1.5px solid var(--brd);border-radius:6px;font-size:.8125rem;background:var(--bg);color:var(--txt);padding:.25rem .375rem">'
+    + POSITIONEN.map(p => '<option value="' + p + '"' + (pos === p ? ' selected' : '') + '>' + POS_SHORT[p] + '</option>').join('') + '</select></div>'
+    + '<div class="timer-quarter-row" style="grid-template-columns:repeat(6,minmax(0,1fr))">' + knoepfe + '</div></div>';
+}
+
+function notenModalOeffnen(index) {
+  const sp = S.dashboardSpiele[index];
+  if (!sp) return;
+  const noten = {}, pos = {};
+  (Array.isArray(sp.noten) ? sp.noten : []).forEach(n => { if (n.spielerId) { noten[n.spielerId] = Number(n.note); pos[n.spielerId] = n.pos; } });
+  modal = { typ: 'noten', id: null, sterne: {}, index, noten, pos };
+  const gegner = sp.unsereSeite === 'heim' ? sp.auswaertsName : sp.heimName;
+  document.getElementById('modal-ti').textContent = 'Spielnoten';
+  document.getElementById('modal-body').innerHTML =
+    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.5rem">' + h(sp.datum || '') + ' gegen ' + h(gegner || '') + ' (' + sp.heim + ':' + sp.auswaerts + ')<br>'
+    + '1 = sehr gut … 6 = ungenügend. Wer nicht gespielt hat, bekommt keine Note. Die Position ist die, auf der er gespielt hat.</p>'
+    + (S.spieler.length ? S.spieler.map(notenZeileHtml).join('') : '<p style="color:var(--mut)">Noch keine Spieler.</p>');
+  modalFooterSichtbar(true);
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+
+function notenZeileAktualisieren(id) {
+  const s = S.spieler.find(x => x.id === id);
+  const el = document.getElementById('nr-' + id);
+  if (s && el) el.outerHTML = notenZeileHtml(s);
+}
+
+function notenSetzen(id, n) {
+  if (modal?.typ !== 'noten') return;
+  if (modal.noten[id] === n) delete modal.noten[id]; else modal.noten[id] = n;   // nochmal tippen = Note entfernen
+  notenZeileAktualisieren(id);
+}
+
+function notenPos(id, pos) {
+  if (modal?.typ !== 'noten') return;
+  modal.pos[id] = pos;
+}
+
+function notenSpeichern() {
+  if (modal?.typ !== 'noten') return;
+  const sp = S.dashboardSpiele[modal.index];
+  if (!sp) { modalSch(); return; }
+  const behalten = (Array.isArray(sp.noten) ? sp.noten : []).filter(n => n.spielerId && !S.spieler.some(x => x.id === n.spielerId)); // gelöschte Spieler bleiben erhalten
+  const neu = S.spieler.filter(s => modal.noten[s.id]).map(s => ({
+    spielerId: s.id, name: s.name, pos: modal.pos[s.id] || s.position || 'Mittelfeld', note: modal.noten[s.id]
+  }));
+  const alle = behalten.concat(neu);
+  if (alle.length) sp.noten = alle; else delete sp.noten;
+  speichern();
+  modalSch();
+  dbR();
+  toastZ('✅ Spielnoten gespeichert', 'ok');
+}
+
+/* --- Statistik im Dashboard --- */
+
+let dbAlleNoten = false;
+
+function dbNotenUmschalten() {
+  dbAlleNoten = !dbAlleNoten;
+  notenR();
+}
+
+function notenR() {
+  const el = document.getElementById('db-noten');
+  if (!el) return;
+  const zeilen = S.spieler.map(s => {
+    const liste = notenEintraege(s.id, s.name);
+    if (!liste.length) return null;
+    const z = notenZusammenfassung(liste);
+    const haeufig = Object.keys(z.proPos).sort((a, b) => z.proPos[b].anzahl - z.proPos[a].anzahl)[0];
+    return { s, z, haeufig };
+  }).filter(Boolean).sort((a, b) => a.z.schnitt - b.z.schnitt || b.z.anzahl - a.z.anzahl || a.s.name.localeCompare(b.s.name, 'de'));
+  if (!zeilen.length) { el.innerHTML = ''; return; }
+
+  const LIMIT = 5;
+  const c = 'padding:.4rem .2rem;text-align:center;white-space:nowrap';
+  const th = 'padding:.35rem .2rem;text-align:center;font-weight:700';
+  const rows = zeilen.slice(0, dbAlleNoten ? zeilen.length : LIMIT).map((x, i) =>
+    '<tr onclick="spielerFotoModal(\'' + x.s.id + '\')" style="cursor:pointer;' + (i % 2 ? 'background:rgba(148,163,184,.08);' : '') + '">'
+    + '<td style="' + c + ';color:var(--mut);font-weight:700;padding-left:.5rem">' + (i + 1) + '</td>'
+    + '<td style="padding:.3rem .25rem;text-align:left"><span style="display:flex;align-items:center;gap:.4rem;min-width:0">' + avatarHtml(x.s.name, x.s.foto, 24)
+    + '<span style="font-size:.8125rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + h(x.s.name) + '</span></span></td>'
+    + '<td style="' + c + ';font-weight:800;color:' + notenFarbe(x.z.schnitt) + '">' + notenFormat(x.z.schnitt) + '</td>'
+    + '<td style="' + c + '">' + x.z.anzahl + '</td>'
+    + '<td style="' + c + ';padding-right:.5rem"><b style="color:' + (POS_FARBE[x.haeufig] || '#64748B') + '">' + h(POS_SHORT[x.haeufig] || '–') + '</b></td></tr>').join('');
+
+  el.innerHTML = '<div style="margin-bottom:.9rem">'
+    + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">'
+    + '<span style="font-size:1rem;font-weight:800;color:var(--prim)">📈 Spielnoten</span>'
+    + '<span style="font-size:.6875rem;color:var(--mut)">Spieler antippen für den Verlauf</span></div>'
+    + '<div class="karte" style="padding:.5rem .25rem"><table style="width:100%;border-collapse:collapse;font-size:.75rem">'
+    + '<thead><tr style="color:var(--mut);font-size:.625rem;text-transform:uppercase;letter-spacing:.03em;border-bottom:2px solid var(--brd)">'
+    + '<th style="' + th + ';padding-left:.5rem">#</th><th style="' + th + ';text-align:left">Spieler</th>'
+    + '<th style="' + th + '">Ø Note</th><th style="' + th + '">Spiele</th><th style="' + th + ';padding-right:.5rem">Pos.</th></tr></thead>'
+    + '<tbody>' + rows + '</tbody></table></div>'
+    + (zeilen.length > LIMIT
+        ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-top:.5rem" onclick="dbNotenUmschalten()">' + (dbAlleNoten ? 'Weniger anzeigen' : 'Alle ' + zeilen.length + ' anzeigen') + '</button>'
         : '')
     + '</div>';
 }
