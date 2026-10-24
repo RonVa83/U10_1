@@ -858,6 +858,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="db-spiele"></div>
       <div id="db-tabelle"></div>
       <div id="db-torschuetzen"></div>
+      <div id="db-scorer"></div>
     </section>
 
     <!-- Match -->
@@ -1725,6 +1726,8 @@ function dashboardSpielSpeichern() {
         name: t.spielerId
           ? (S.spieler.find(x => x.id === t.spielerId)?.name || t.spielerName || '')
           : '',
+        vorlageId: t.vorlageId || null,
+        vorlageName: t.vorlageId ? (S.spieler.find(x => x.id === t.vorlageId)?.name || t.vorlageName || '') : '',
         viertel: t.viertel,
         zeitSek: t.zeitSek
       }))
@@ -2133,7 +2136,7 @@ function spielstandTorschuetzeAuswahl(team, torIndex = null) {
     idx = found ? found.i : null;
   }
 
-  const list = S.spieler.filter(s => s.spielteam === unserPlanTeam);
+  const list = matchSpielerListe().alle;
   if (!list.length) {
     toastZ('Keine Spieler für diese Mannschaft vorhanden.', 'err');
     return;
@@ -2147,7 +2150,7 @@ function spielstandTorschuetzeAuswahl(team, torIndex = null) {
     <div class="fg">
       <label>Spieler wählen</label>
       <div style="display:grid;gap:.5rem;margin-top:.5rem">
-        ${list.map(s => `<button class="btn btn-prim" type="button" onclick="spielstandTorschuetzeSpeichern('${team}', '${s.id}')">${avatarHtml(s.name, s.foto, 28)}${h(s.name)}</button>`).join('')}
+        ${spielerAuswahlHtml(matchSpielerListe(), id => "spielstandTorschuetzeSpeichern('" + team + "', '" + id + "')")}
       </div>
     </div>
     <div class="fg">
@@ -2178,6 +2181,7 @@ function spielstandTorschuetzeSpeichern(team, spielerId) {
     return;
   }
 
+  const erstmals = !entry.spielerId;   // neues Tor → danach nach der Vorlage fragen
   entry.spielerId = spieler.id;
   entry.spielerName = spieler.name;
   modalSch();
@@ -2186,6 +2190,37 @@ function spielstandTorschuetzeSpeichern(team, spielerId) {
   const gegnerKurz = gegnerCodeKurz();
   const teamLabel = team === (S.spielstand.unsereMannschaft === 'heim' ? 'A' : 'B') ? 'EBE' : gegnerKurz;
   toastZ(`✅ Torschütze für ${teamLabel} gespeichert`, 'ok');
+  if (erstmals) spielstandVorlageAuswahl(idx);
+}
+
+// Vorlagengeber zu einem Tor wählen (nicht der Torschütze selbst)
+function spielstandVorlageAuswahl(index) {
+  const tor = S.spielstand && Array.isArray(S.spielstand.tore) ? S.spielstand.tore[index] : null;
+  if (!tor) return;
+  const l = matchSpielerListe();
+  const liste = { feld: l.feld.filter(x => x.id !== tor.spielerId), bank: l.bank.filter(x => x.id !== tor.spielerId) };
+  modal = { typ: 'vorlage', torIndex: index, sterne: {} };
+  document.getElementById('modal-ti').textContent = 'Vorlage von …?';
+  document.getElementById('modal-body').innerHTML =
+    '<div class="fg"><label>Wer hat aufgelegt? (Tor: ' + h(tor.spielerName || '') + ')</label>'
+    + '<div style="display:grid;gap:.5rem;margin-top:.5rem">'
+    + spielerAuswahlHtml(liste, id => "spielstandVorlageSpeichern(" + index + ", '" + id + "')")
+    + '</div></div>'
+    + '<div class="fg"><button class="btn btn-out btn-full" type="button" onclick="spielstandVorlageSpeichern(' + index + ', \'\')">Keine Vorlage</button></div>';
+  modalFooterSichtbar(false);
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+
+function spielstandVorlageSpeichern(index, id) {
+  const tor = S.spielstand && Array.isArray(S.spielstand.tore) ? S.spielstand.tore[index] : null;
+  if (!tor) { modalSch(); return; }
+  const sp = id ? S.spieler.find(x => x.id === id) : null;
+  if (sp) { tor.vorlageId = sp.id; tor.vorlageName = sp.name; }
+  else { delete tor.vorlageId; delete tor.vorlageName; }
+  modalSch();
+  speichern();
+  dbR();
+  toastZ(sp ? '🅰️ Vorlage: ' + sp.name : 'Ohne Vorlage gespeichert', 'ok');
 }
 
 function spielstandTorLoeschen(index) {
@@ -2474,6 +2509,7 @@ function spielstandHtml(optionen = {}) {
         const teamButtons = tor.team === unsereMannschaft
           ? '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.25rem">'
             + '<button class="btn btn-out btn-sm" title="Torschütze ändern" aria-label="Torschütze ändern" onclick="spielstandTorschuetzeAuswahl(\'' + tor.team + '\', ' + index + ')">⚽</button>'
+            + '<button class="btn btn-out btn-sm" title="Vorlage" aria-label="Vorlage ändern" onclick="spielstandVorlageAuswahl(' + index + ')">🅰️</button>'
             + '<button class="btn btn-out btn-sm" title="Zeit ändern" aria-label="Zeit ändern" onclick="spielstandTorZeitAnpassen(' + index + ')">⏱</button>'
             + '<button class="btn btn-out btn-sm" title="Löschen" aria-label="Löschen" onclick="spielstandTorLoeschen(' + index + ')">🗑</button>'
             + '</div>'
@@ -2481,7 +2517,7 @@ function spielstandHtml(optionen = {}) {
             + '<button class="btn btn-out btn-sm" title="Zeit ändern" aria-label="Zeit ändern" onclick="spielstandTorZeitAnpassen(' + index + ')">⏱</button>'
             + '<button class="btn btn-out btn-sm" title="Löschen" aria-label="Löschen" onclick="spielstandTorLoeschen(' + index + ')">🗑</button>'
             + '</div>';
-        return '<li style="padding:.45rem .5rem;border-radius:10px;background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.12)"><div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem"><div style="display:flex;align-items:center;gap:.5rem;min-width:0"><span style="display:inline-flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border-radius:999px;background:' + teamColor + ';color:white;font-size:.7rem;font-weight:800;flex-shrink:0">' + (isHome ? 'E' : 'G') + '</span><div style="min-width:0"><div style="font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + h(name) + '</div><div style="font-size:.68rem;color:var(--mut)">' + label + ' · V' + tor.viertel + ' · ' + tor.zeit + '</div></div></div><span style="font-weight:800;color:' + teamColor + ';font-size:.8rem">' + label + '</span></div>' + teamButtons + '</li>';
+        return '<li style="padding:.45rem .5rem;border-radius:10px;background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.12)"><div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem"><div style="display:flex;align-items:center;gap:.5rem;min-width:0"><span style="display:inline-flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border-radius:999px;background:' + teamColor + ';color:white;font-size:.7rem;font-weight:800;flex-shrink:0">' + (isHome ? 'E' : 'G') + '</span><div style="min-width:0"><div style="font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + h(name) + '</div><div style="font-size:.68rem;color:var(--mut)">' + label + ' · V' + tor.viertel + ' · ' + tor.zeit + (tor.vorlageName ? ' · 🅰️ ' + h(tor.vorlageName) : '') + '</div></div></div><span style="font-weight:800;color:' + teamColor + ';font-size:.8rem">' + label + '</span></div>' + teamButtons + '</li>';
       }).join('')
     : '<p style="color:var(--mut);font-size:.8125rem;margin:0">Noch keine Tore erfasst.</p>';
 
@@ -2878,6 +2914,26 @@ function matchAufstellungDaten(team, q) {
   const src = team === 'A' ? S.spielplanung?.lineupA : S.spielplanung?.lineupB;
   if (src && Array.isArray(src[q]) && src[q].some(Boolean)) return { row: src[q].slice(0, 7), quelle: 'Einsatzplan' };
   return null;
+}
+
+// Spieler für Auswahlfenster: erst die im aktuellen Viertel eingeplanten, dann der Rest des Kaders
+function matchSpielerListe() {
+  const team = S.aufstellung && S.aufstellung.team === 'B' ? 'B' : 'A';
+  const q = Math.max(0, spielTimer.aktuelle - 1);
+  const daten = matchAufstellungDaten(team, q);
+  const kader = aufKader(team);
+  const feldIds = new Set(daten ? daten.row.filter(Boolean) : []);
+  const feld = kader.filter(s => feldIds.has(s.id));
+  const bank = kader.filter(s => !feldIds.has(s.id));
+  return { feld, bank, alle: feld.concat(bank) };
+}
+
+// Knöpfe für ein Auswahlfenster; klick(id) liefert den onclick-Text
+function spielerAuswahlHtml(liste, klick) {
+  const knopf = (s, klasse) => '<button class="btn ' + klasse + '" type="button" onclick="' + klick(s.id) + '">' + avatarHtml(s.name, s.foto, 28) + h(s.name) + '</button>';
+  return liste.feld.map(s => knopf(s, 'btn-prim')).join('')
+    + (liste.bank.length && liste.feld.length ? '<div style="font-size:.6875rem;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.04em;margin-top:.25rem">🪑 Bank</div>' : '')
+    + liste.bank.map(s => knopf(s, liste.feld.length ? 'btn-out' : 'btn-prim')).join('');
 }
 
 function matchAufToggle() {
@@ -3975,10 +4031,11 @@ function avatarHtml(name, foto, size) {
 // Zahlen für das Spielerprofil: Tore aus gespeicherten Spielen, Viertel aus Aufstellung/Einsatzplan
 function spielerStatistik(id, name) {
   const nm = String(name || '').trim().toLowerCase();
-  let tore = 0;
+  let tore = 0, vorlagen = 0;
   const spiele = new Set();
   (S.dashboardSpiele || []).forEach((sp, i) => (Array.isArray(sp.tore) ? sp.tore : []).forEach(t => {
     if (t.spielerId === id || (nm && String(t.name || '').trim().toLowerCase() === nm)) { tore++; spiele.add(i); }
+    if (t.vorlageId === id || (nm && String(t.vorlageName || '').trim().toLowerCase() === nm)) vorlagen++;
   }));
   let viertel = 0;
   const anzahlV = (S.spielplanung && S.spielplanung.viertel) || 4;
@@ -3988,7 +4045,7 @@ function spielerStatistik(id, name) {
       if (d && d.row.includes(id)) viertel++;
     }
   });
-  return { tore, spiele: spiele.size, viertel };
+  return { tore, vorlagen, spiele: spiele.size, viertel };
 }
 
 function spielerNotizAend(id, wert) {
@@ -4046,7 +4103,7 @@ function spielerFotoModal(id) {
     + '<div class="fg"><label>Niveau</label>' + sterneEdit + '</div>'
     + '</div>'
     + '<div style="display:flex;gap:.5rem;margin-bottom:1rem">'
-    + kachel(st.tore, 'Tore') + kachel(st.spiele, 'Spiele mit Tor') + kachel(st.viertel, 'Viertel im Plan')
+    + kachel(st.tore, 'Tore') + kachel(st.vorlagen, 'Vorlagen') + kachel(st.spiele, 'Spiele mit Tor') + kachel(st.viertel, 'Viertel im Plan')
     + '</div>'
     + '<div class="fg"><label for="profil-notiz">Notiz (nur für dich)</label>'
     + '<textarea id="profil-notiz" rows="4" placeholder="z. B. Stärken, woran er arbeitet, Besonderheiten …" '
@@ -4448,13 +4505,19 @@ function dashboardSpielModalRender() {
     ).join('');
   };
 
+  const selStil = 'flex:1;min-width:0;min-height:44px;padding:.5rem;border:2px solid var(--brd);border-radius:var(--rs);background:var(--surf);color:var(--txt);font-size:1rem';
+  const optVorlage = t => '<option value="">— keine Vorlage —</option>'
+    + (t.vorlageId && !S.spieler.some(x => x.id === t.vorlageId) ? '<option value="' + h(t.vorlageId) + '" selected>' + h(t.vorlageName || 'Unbekannt') + '</option>' : '')
+    + S.spieler.map(x => '<option value="' + h(x.id) + '"' + (t.vorlageId === x.id ? ' selected' : '') + '>' + h(x.name) + '</option>').join('');
+
   const zeilen = modal.tore.length
     ? modal.tore.map((t, i) =>
-        '<li style="display:flex;align-items:center;gap:.5rem">'
-        + '<span style="font-size:1.1rem">⚽</span>'
-        + '<select style="flex:1;min-width:0;min-height:44px;padding:.5rem;border:2px solid var(--brd);border-radius:var(--rs);background:var(--surf);color:var(--txt);font-size:1rem" onchange="dashboardModalTorSpieler(' + i + ', this.value)">'
-        + optionen(t) + '</select>'
-        + '<button class="ib" type="button" onclick="dashboardModalTorDel(' + i + ')" aria-label="Tor löschen">🗑️</button>'
+        '<li style="display:flex;flex-direction:column;gap:.375rem;padding:.5rem;border:1px solid var(--brd);border-radius:var(--rs)">'
+        + '<div style="display:flex;align-items:center;gap:.5rem"><span style="font-size:1.1rem">⚽</span>'
+        + '<select style="' + selStil + '" onchange="dashboardModalTorSpieler(' + i + ', this.value)">' + optionen(t) + '</select>'
+        + '<button class="ib" type="button" onclick="dashboardModalTorDel(' + i + ')" aria-label="Tor löschen">🗑️</button></div>'
+        + '<div style="display:flex;align-items:center;gap:.5rem"><span style="font-size:1.1rem">🅰️</span>'
+        + '<select style="' + selStil + '" onchange="dashboardModalTorVorlage(' + i + ', this.value)">' + optVorlage(t) + '</select></div>'
         + '</li>'
       ).join('')
     : '<li style="color:var(--mut);font-size:.875rem">Noch keine Torschützen erfasst.</li>';
@@ -4492,6 +4555,13 @@ function dashboardModalTorDel(i) {
   dashboardSpielModalRender();
 }
 
+function dashboardModalTorVorlage(i, id) {
+  if (modal?.typ !== 'dashboardspiel' || !modal.tore[i]) return;
+  const t = modal.tore[i];
+  t.vorlageId = id || null;
+  t.vorlageName = id ? (S.spieler.find(x => x.id === id)?.name || '') : '';
+}
+
 function dashboardModalTorSpieler(i, id) {
   if (modal?.typ !== 'dashboardspiel' || !modal.tore[i]) return;
   const t = modal.tore[i];
@@ -4527,7 +4597,7 @@ function torschuetzenR() {
   if (!el) return;
 
   const spiele = Array.isArray(S.dashboardSpiele) ? S.dashboardSpiele : [];
-  if (!spiele.length) { el.innerHTML = ''; return; }
+  if (!spiele.length) { el.innerHTML = ''; scorerR(); return; }
 
   const stat = {};
   let toreGesamt = 0, ohneSchuetze = 0;
@@ -4592,6 +4662,68 @@ function torschuetzenR() {
   }
 
   el.innerHTML = html + '</div>';
+  scorerR();
+}
+
+let dbAlleScorer = false;
+
+function dbScorerUmschalten() {
+  dbAlleScorer = !dbAlleScorer;
+  scorerR();
+}
+
+// Scorerliste: Tore + Vorlagen aus den gespeicherten Spielen
+function scorerR() {
+  const el = document.getElementById('db-scorer');
+  if (!el) return;
+  const spiele = Array.isArray(S.dashboardSpiele) ? S.dashboardSpiele : [];
+  const stat = {};
+  let hatVorlagen = false;
+
+  const zuordnen = (id, name) => {
+    const nm = String(name || '').trim().toLowerCase();
+    const aktuell = (id && S.spieler.find(x => x.id === id)) || (nm && S.spieler.find(x => String(x.name || '').trim().toLowerCase() === nm)) || null;
+    if (!aktuell && !nm) return null;
+    const k = aktuell ? aktuell.id : 'n:' + nm;
+    if (!stat[k]) stat[k] = { id: aktuell ? aktuell.id : null, name: aktuell ? aktuell.name : name, foto: aktuell && aktuell.foto ? aktuell.foto : null, tore: 0, vorlagen: 0 };
+    return stat[k];
+  };
+
+  spiele.forEach(sp => (Array.isArray(sp.tore) ? sp.tore : []).forEach(t => {
+    if (t.vorlageId || t.vorlageName) hatVorlagen = true;
+    const a = zuordnen(t.spielerId, t.name); if (a) a.tore++;
+    const v = zuordnen(t.vorlageId, t.vorlageName); if (v) v.vorlagen++;
+  }));
+
+  if (!hatVorlagen) { el.innerHTML = ''; return; }   // erst anzeigen, wenn Vorlagen erfasst sind
+
+  const liste = Object.values(stat).sort((a, b) =>
+    (b.tore + b.vorlagen) - (a.tore + a.vorlagen) || b.tore - a.tore || a.name.localeCompare(b.name, 'de'));
+  const LIMIT = 5;
+  const c = 'padding:.4rem .2rem;text-align:center;white-space:nowrap';
+  const th = 'padding:.35rem .2rem;text-align:center;font-weight:700';
+  const rows = liste.slice(0, dbAlleScorer ? liste.length : LIMIT).map((x, i) =>
+    '<tr ' + (x.id ? 'onclick="spielerFotoModal(\'' + x.id + '\')" style="cursor:pointer;' : 'style="') + (i % 2 ? 'background:rgba(148,163,184,.08);' : '') + '">'
+    + '<td style="' + c + ';color:var(--mut);font-weight:700;padding-left:.5rem">' + (i + 1) + '</td>'
+    + '<td style="padding:.3rem .25rem;text-align:left"><span style="display:flex;align-items:center;gap:.4rem;min-width:0">' + avatarHtml(x.name, x.foto, 24)
+    + '<span style="font-size:.8125rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + h(x.name) + '</span></span></td>'
+    + '<td style="' + c + '">' + x.tore + '</td>'
+    + '<td style="' + c + '">' + x.vorlagen + '</td>'
+    + '<td style="' + c + ';font-weight:800;color:var(--prim);padding-right:.5rem">' + (x.tore + x.vorlagen) + '</td></tr>').join('');
+
+  el.innerHTML = '<div style="margin-bottom:.9rem">'
+    + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">'
+    + '<span style="font-size:1rem;font-weight:800;color:var(--prim)">🏅 Scorerliste</span>'
+    + '<span style="font-size:.6875rem;color:var(--mut)">Tore + Vorlagen</span></div>'
+    + '<div class="karte" style="padding:.5rem .25rem"><table style="width:100%;border-collapse:collapse;font-size:.75rem">'
+    + '<thead><tr style="color:var(--mut);font-size:.625rem;text-transform:uppercase;letter-spacing:.03em;border-bottom:2px solid var(--brd)">'
+    + '<th style="' + th + ';padding-left:.5rem">#</th><th style="' + th + ';text-align:left">Spieler</th>'
+    + '<th style="' + th + '">Tore</th><th style="' + th + '">Vorl.</th><th style="' + th + ';padding-right:.5rem">Pkt</th></tr></thead>'
+    + '<tbody>' + rows + '</tbody></table></div>'
+    + (liste.length > LIMIT
+        ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-top:.5rem" onclick="dbScorerUmschalten()">' + (dbAlleScorer ? 'Weniger anzeigen' : 'Alle ' + liste.length + ' anzeigen') + '</button>'
+        : '')
+    + '</div>';
 }
 
 /* ===== ALLES RENDERN ===== */
