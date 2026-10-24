@@ -1010,7 +1010,8 @@ const spielTimer = {
   remaining: 15 * 60,
   running: false,
   intervalId: null,
-  endTs: 0
+  endTs: 0,
+  rest: {}      // Restzeit je Viertel (Sekunden); so bleiben beendete Viertel beendet
 };
 
 /* ===== PERSISTENZ ===== */
@@ -1408,59 +1409,129 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && spielTimer.running) {
     wakeLockAn();
     spielTimerTick(); // sofort aufholen
+  } else if (document.visibilityState === 'hidden') {
+    timerSpeichern();
   }
 });
+window.addEventListener('pagehide', () => timerSpeichern());
 
 function vibrieren(muster) {
   try { if (navigator.vibrate) navigator.vibrate(muster); } catch(_) {}
 }
 
+/* ===== TIMER: läuft über die Endzeit und übersteht Neustart, Sperrbildschirm und Absturz ===== */
+
+const TIMER_KEY = 'trainingsplaner_timer_v1';
+
+function timerSpeichern() {
+  try {
+    localStorage.setItem(TIMER_KEY, JSON.stringify({
+      aktuelle: spielTimer.aktuelle,
+      remaining: spielTimer.remaining,
+      running: spielTimer.running,
+      endTs: spielTimer.endTs,
+      rest: spielTimer.rest
+    }));
+  } catch (_) {}
+}
+
+function timerIntervallStarten() {
+  if (!spielTimer.intervalId) spielTimer.intervalId = setInterval(spielTimerTick, 500);
+}
+
+function timerIntervallStoppen() {
+  if (spielTimer.intervalId) { clearInterval(spielTimer.intervalId); spielTimer.intervalId = null; }
+}
+
+// Stand nach einem Neustart der App wiederherstellen
+function timerWiederherstellen() {
+  try {
+    const d = JSON.parse(localStorage.getItem(TIMER_KEY) || 'null');
+    if (!d || typeof d !== 'object') return;
+    const dauer = spielTimer.dauerSek;
+    spielTimer.aktuelle = Math.min(spielTimer.viertel, Math.max(1, Number(d.aktuelle) || 1));
+    spielTimer.rest = (d.rest && typeof d.rest === 'object') ? d.rest : {};
+    spielTimer.remaining = Number.isFinite(Number(d.remaining)) ? Math.max(0, Math.min(dauer, Number(d.remaining))) : dauer;
+    if (d.running && Number(d.endTs) > 0) {
+      const uebrig = Math.ceil((Number(d.endTs) - Date.now()) / 1000);
+      if (uebrig > 0) {
+        spielTimer.remaining = Math.min(dauer, uebrig);
+        spielTimer.endTs = Number(d.endTs);
+        spielTimer.running = true;
+        timerIntervallStarten();
+        wakeLockAn();
+      } else {
+        spielTimerViertelBeenden(false);   // Zeit lief ab, während die App geschlossen war
+      }
+    }
+  } catch (_) {}
+}
+
+// Nur Zahlen aktualisieren, nichts neu aufbauen (kein Flackern, kein Verlust des Fokus)
+function spielTimerAnzeigeAktualisieren() {
+  const inp = document.querySelector('#timer-panel .timer-value-input');
+  if (inp && document.activeElement !== inp) inp.value = formatTimerSekunden(spielTimer.remaining);
+  const gesamt = document.querySelector('#timer-panel .score-timer-total strong');
+  if (gesamt) gesamt.textContent = formatTimerSekunden(spielGesamtSekunden());
+}
+
+// Viertel ist durch: merken (bleibt auf 00:00) und zum nächsten Viertel wechseln, ohne etwas zu löschen
+function spielTimerViertelBeenden(mitSignal) {
+  spielTimer.running = false;
+  timerIntervallStoppen();
+  wakeLockAus();
+  spielTimer.remaining = 0;
+  spielTimer.rest[spielTimer.aktuelle] = 0;
+  if (spielTimer.aktuelle >= spielTimer.viertel) {
+    if (mitSignal) { vibrieren([600, 200, 600, 200, 600]); signalton(3); }   // Spielende: 3x lang
+    toastZ('⏱️ Spiel beendet', 'ok');
+  } else {
+    if (mitSignal) { vibrieren([500, 200, 500]); signalton(2); }             // Viertelende: 2x
+    spielTimer.aktuelle += 1;
+    spielTimer.remaining = spielTimer.rest[spielTimer.aktuelle] ?? spielTimer.dauerSek;
+    toastZ(`✅ Viertel ${spielTimer.aktuelle} bereit`, 'ok');
+  }
+  timerSpeichern();
+}
+
 function spielTimerTick() {
   if (!spielTimer.running) return;
-
   spielTimer.remaining = Math.max(0, Math.ceil((spielTimer.endTs - Date.now()) / 1000));
-
   if (spielTimer.remaining === 0) {
-    spielTimer.running = false;
-    wakeLockAus();
-    if (spielTimer.intervalId) {
-      clearInterval(spielTimer.intervalId);
-      spielTimer.intervalId = null;
-    }
-
-    if (spielTimer.aktuelle >= spielTimer.viertel) {
-      vibrieren([600, 200, 600, 200, 600]); // Spielende: 3x lang
-      signalton(3);
-      toastZ('⏱️ Spiel beendet','ok');
-    } else {
-      vibrieren([500, 200, 500]); // Viertelende: 2x
-      signalton(2);
-      spielTimer.aktuelle += 1;
-      spielTimer.remaining = spielTimer.dauerSek;
-      toastZ(`✅ Viertel ${spielTimer.aktuelle} bereit`,`ok`);
-    }
+    spielTimerViertelBeenden(true);
+    spielTimerRender();
+    return;
   }
+  spielTimerAnzeigeAktualisieren();
+}
 
-  spielTimerRender();
+function naechstesOffenesViertel(von) {
+  for (let q = von + 1; q <= spielTimer.viertel; q++) {
+    if ((spielTimer.rest[q] ?? spielTimer.dauerSek) > 0) return q;
+  }
+  return null;
+}
+
+// Viertel wechseln: Restzeit des bisherigen Viertels bleibt gespeichert (Timer muss pausiert sein)
+function spielTimerWechselZu(q) {
+  spielTimer.rest[spielTimer.aktuelle] = spielTimer.remaining;
+  spielTimer.aktuelle = q;
+  spielTimer.remaining = spielTimer.rest[q] ?? spielTimer.dauerSek;
 }
 
 function spielTimerStart() {
   if (spielTimer.running) return;
   if (spielTimer.remaining === 0) {
-    if (spielTimer.aktuelle < spielTimer.viertel) {
-      spielTimer.aktuelle += 1;
-    } else {
-      spielTimer.aktuelle = 1;
-    }
-    spielTimer.remaining = spielTimer.dauerSek;
+    const q = naechstesOffenesViertel(spielTimer.aktuelle);
+    if (q === null) { toastZ('Alle Viertel sind durch. Zum Neustart „Reset“ nutzen.', 'err'); return; }
+    spielTimerWechselZu(q);
   }
   spielTimer.endTs = Date.now() + spielTimer.remaining * 1000;
   spielTimer.running = true;
   audioFreischalten(); // Ton erst nach einem Tipp erlaubt
   wakeLockAn();
-  if (!spielTimer.intervalId) {
-    spielTimer.intervalId = setInterval(spielTimerTick, 500);
-  }
+  timerIntervallStarten();
+  timerSpeichern();
   spielTimerRender();
 }
 
@@ -1470,18 +1541,24 @@ function spielTimerPause() {
   }
   spielTimer.running = false;
   wakeLockAus();
-  if (spielTimer.intervalId) {
-    clearInterval(spielTimer.intervalId);
-    spielTimer.intervalId = null;
-  }
+  timerIntervallStoppen();
+  timerSpeichern();
   spielTimerRender();
 }
 
+// Zurücksetzen nur nach ausdrücklicher Bestätigung
 function spielTimerReset() {
-  spielTimerPause();
-  spielTimer.aktuelle = 1;
-  spielTimer.remaining = spielTimer.dauerSek;
-  spielTimerRender();
+  const laeuft = spielTimer.running;
+  bestaetigen('Timer zurücksetzen',
+    (laeuft ? 'Der Timer läuft noch! ' : '') + 'Wirklich alle Viertel und die Zeit auf den Anfang zurücksetzen?',
+    'Zurücksetzen', () => {
+      spielTimerPause();
+      spielTimer.aktuelle = 1;
+      spielTimer.remaining = spielTimer.dauerSek;
+      spielTimer.rest = {};
+      timerSpeichern();
+      spielTimerRender();
+    });
 }
 
 function spielTimerZeitFormat(value) {
@@ -1512,20 +1589,29 @@ function spielTimerZeitFormat(value) {
 }
 
 function spielTimerZeitAnpassen(value) {
+  if (spielTimer.running) return;                 // läuft der Timer, wird nichts verändert
   const total = parseZeitText(value, spielTimer.dauerSek);
-  if (total === null) return;
-
-  spielTimerPause();
+  if (total === null || total === spielTimer.remaining) return;
   spielTimer.remaining = total;
+  spielTimer.rest[spielTimer.aktuelle] = total;
+  timerSpeichern();
   spielTimerRender();
 }
 
 function spielTimerViertelWechsel(value) {
   const q = Math.max(1, Math.min(spielTimer.viertel, Number(value) || 1));
-  spielTimerPause();
-  spielTimer.aktuelle = q;
-  spielTimer.remaining = spielTimer.dauerSek;
-  spielTimerRender();
+  if (q === spielTimer.aktuelle) return;
+  const wechseln = () => {
+    spielTimerPause();
+    spielTimerWechselZu(q);
+    timerSpeichern();
+    spielTimerRender();
+  };
+  if (spielTimer.running) {
+    bestaetigen('Viertel wechseln', 'Der Timer läuft. Er wird angehalten und zu Viertel ' + q + ' gewechselt.', 'Wechseln', wechseln);
+  } else {
+    wechseln();
+  }
 }
 
 function spielTimerMarkup() {
@@ -2423,7 +2509,7 @@ function spielstandHtml(optionen = {}) {
         + '<div class="timer-display">'
         + '<div class="timer-display-stack">'
         + '<div class="timer-display-row">'
-        + '<input class="timer-value timer-value-input" type="text" inputmode="numeric" value="' + formatTimerSekunden(spielTimer.remaining) + '" onblur="spielTimerZeitAnpassen(this.value); this.value = spielTimerZeitFormat(spielTimer.remaining);" onchange="spielTimerZeitAnpassen(this.value); this.value = spielTimerZeitFormat(spielTimer.remaining);" aria-label="Zeit anpassen">'
+        + '<input class="timer-value timer-value-input" type="text" inputmode="numeric" value="' + formatTimerSekunden(spielTimer.remaining) + '" onblur="spielTimerZeitAnpassen(this.value); this.value = spielTimerZeitFormat(spielTimer.remaining);" onchange="spielTimerZeitAnpassen(this.value); this.value = spielTimerZeitFormat(spielTimer.remaining);" aria-label="Zeit anpassen"' + (spielTimer.running ? ' readonly' : '') + '>'
         + '<div class="timer-quarter-stack">'
         + '<div class="timer-current-quarter">' + timerHeadline + '</div>'
         + '<span class="score-timer-indicator ' + timerStatusClass + '" aria-hidden="true"></span>'
@@ -4548,6 +4634,7 @@ try { if (navigator.storage && navigator.storage.persist) navigator.storage.pers
 /* ===== START ===== */
 document.addEventListener('DOMContentLoaded', () => {
   laden();
+  timerWiederherstellen();
   allesR();
   initEvents();
 });
