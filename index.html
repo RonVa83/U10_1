@@ -1815,6 +1815,49 @@ function dbR() {
     : '';
 }
 
+/* ===== STÄRKE-WERT FÜR DIE MANNSCHAFTSEINTEILUNG ===== */
+
+// Gewichtung aus den Einstellungen; Standard: alles 1
+function gewichte() {
+  const g = (einst().gewicht && typeof einst().gewicht === 'object') ? einst().gewicht : {};
+  const w = k => { const v = Number(g[k]); return Number.isFinite(v) && v >= 0 ? v : 1; };
+  return { niveau: w('niveau'), note: w('note'), training: w('training') };
+}
+
+function gewichtText(x) { return String(Math.round(x * 100) / 100).replace('.', ','); }
+
+// Einmal berechnen, dann für alle Spieler verwenden
+function staerkeKontext() {
+  const gew = gewichte();
+  const tr = trainingStatistik();
+  const trMap = {};
+  if (tr.N) tr.zeilen.forEach(z => { trMap[z.s.id] = z.pct / 100; });          // 0 … 1
+  const noteMap = {};
+  S.spieler.forEach(s => {
+    const liste = notenEintraege(s.id, s.name);
+    if (liste.length) noteMap[s.id] = (6 - notenZusammenfassung(liste).schnitt) / 5;   // Note 1 → 1,0 · Note 6 → 0,0
+  });
+  const mittel = m => { const v = Object.values(m); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  return { gew, trMap, noteMap, trMittel: mittel(trMap), noteMittel: mittel(noteMap) };
+}
+
+// Wert von 0 bis 1: gewichteter Durchschnitt aus Niveau, Spielnote und Trainingsbeteiligung.
+// Fehlen bei einem Spieler Noten oder Trainings, bekommt er den Durchschnitt der anderen (weder Vor- noch Nachteil).
+function spielerStaerke(s, k) {
+  let w = k.gew;
+  if (w.niveau + w.note + w.training <= 0) w = { niveau: 1, note: 1, training: 1 };
+  const n01 = Math.max(0, Math.min(5, s.niveau || 0)) / 5;
+  const note01 = k.noteMap[s.id] ?? (k.noteMittel ?? 0.5);
+  const tr01 = k.trMap[s.id] ?? (k.trMittel ?? 0.5);
+  return (w.niveau * n01 + w.note * note01 + w.training * tr01) / (w.niveau + w.note + w.training);
+}
+
+function staerkeSortierung(liste) {
+  const k = staerkeKontext();
+  return [...liste].sort((a, b) =>
+    spielerStaerke(b, k) - spielerStaerke(a, k) || (b.niveau || 0) - (a.niveau || 0) || String(a.name).localeCompare(String(b.name), 'de'));
+}
+
 /* ===== MANNSCHAFTS-ZUWEISUNG ===== */
 
 // Anzahl Mannschaften automatisch an anwesende Trainer angleichen (min. 1)
@@ -1840,10 +1883,10 @@ function mannschaftLoeschen(key) {
   speichern(); trainingR(); dbR();
 }
 
-// Anwesende Spieler gleichmäßig nach Niveau auf aktive Mannschaften aufteilen
+// Anwesende Spieler gleichmäßig nach Stärke (Niveau, Spielnote, Trainingsbeteiligung – gewichtet) aufteilen
 function niveauEinteilen() {
   const anw = S.spieler.filter(s => s.anwesend);
-  const sorted = [...anw].sort((a, b) => (b.niveau||0) - (a.niveau||0));
+  const sorted = staerkeSortierung(anw);
   const n = sorted.length;
   const m = S.mannschaften.length || 1;
   sorted.forEach((sp, i) => {
@@ -1855,7 +1898,8 @@ function niveauEinteilen() {
   const ziel = document.getElementById('teams-ziel');
   if (ziel) teamsR(ziel);
   dbR();
-  toastZ('✅ Nach Niveau eingeteilt','ok');
+  const g = gewichte();
+  toastZ('✅ Eingeteilt (Niveau ' + gewichtText(g.niveau) + ' · Note ' + gewichtText(g.note) + ' · Training ' + gewichtText(g.training) + ')','ok');
 }
 
 // Spieler einer Mannschaft zuweisen und Ansicht sofort aktualisieren
@@ -1949,9 +1993,10 @@ function trainingR() {
         <span class="ber-ti">👥 Teams</span>
         <div style="display:flex;align-items:center;gap:.5rem">
           <span style="font-size:.75rem;color:var(--mut)">${S.mannschaften.length} Teams · ${aTr.length} Trainer</span>
-          <button class="btn btn-out btn-sm" onclick="niveauEinteilen()">🔀 Niveau</button>
+          <button class="btn btn-out btn-sm" onclick="niveauEinteilen()">🔀 Einteilen</button>
         </div>
       </div>
+      <div style="font-size:.6875rem;color:var(--mut);margin-bottom:.375rem">Gewichtung: Niveau ${gewichtText(gewichte().niveau)} · Spielnote ${gewichtText(gewichte().note)} · Training ${gewichtText(gewichte().training)} (änderbar unter ☰ Mehr → Einstellungen)</div>
       <div id="teams-ziel"></div>
     </div>
     <div class="tr-ber">
@@ -2270,13 +2315,12 @@ function setSpielteam(id, team) {
 }
 
 function spielplanungAuto() {
-  const verf = [...S.spieler.filter(s => s.verfuegbarWE)]
-    .sort((a, b) => (b.niveau||0) - (a.niveau||0));
+  const verf = staerkeSortierung(S.spieler.filter(s => s.verfuegbarWE));
   if (!verf.length) { toastZ('Bitte zuerst Spieler als verfügbar markieren!', 'err'); return; }
   const half = Math.min(11, verf.length);
   verf.forEach((s, i) => { s.spielteam = i < half ? 'A' : 'B'; });
   speichern(); spielplanungR();
-  toastZ('✅ Nach Niveau eingeteilt', 'ok');
+  toastZ('✅ Eingeteilt nach Niveau, Spielnote und Training', 'ok');
 }
 
 function gegnerCodeKurz() {
@@ -3001,11 +3045,23 @@ function einstellungenOeffnen() {
     + feld('e-liga', 'Name der Liga (im Spielstand)', e.liga, LIGA_STANDARD)
     + feld('e-verein', 'Verein in der Tabelle hervorheben', e.verein, EIGENER_VEREIN)
     + '<div style="font-size:.6875rem;color:var(--mut);margin:-.75rem 0 1rem">Suchbegriff im Mannschaftsnamen, z. B. „Ebersberg“.</div>'
+    + '<div style="font-size:.8125rem;font-weight:700;color:var(--txt);margin:.25rem 0 .25rem">Gewichtung der Mannschaftseinteilung</div>'
+    + '<div style="font-size:.6875rem;color:var(--mut);margin-bottom:.5rem">Wie stark zählen die drei Werte? 1 = Standard, 0 = ignorieren, 2 = doppelt so wichtig. Gilt für „🔀 Einteilen“ im Training und „🔀 Auto“ bei den Spielen.</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem">'
+    + gewichtFeld('e-g-niveau', 'Niveau', e.gewicht && e.gewicht.niveau)
+    + gewichtFeld('e-g-note', 'Spielnote', e.gewicht && e.gewicht.note)
+    + gewichtFeld('e-g-training', 'Training', e.gewicht && e.gewicht.training)
+    + '</div>'
     + '<div class="fg"><label>Weitere Links (erscheinen im Mehr-Menü)</label><div id="e-eigene"></div>'
     + '<button class="btn btn-out btn-sm" type="button" onclick="einstellungenLinkAdd()">＋ Link hinzufügen</button></div>';
   einstellungenEigeneR();
   modalFooterSichtbar(true);
   document.getElementById('modal-ov').classList.remove('hidden');
+}
+
+function gewichtFeld(id, label, wert) {
+  return '<div class="fg"><label for="' + id + '">' + label + '</label>'
+    + '<input id="' + id + '" type="number" inputmode="decimal" min="0" max="10" step="any" value="' + h(wert === undefined || wert === null ? '' : wert) + '" placeholder="1"></div>';
 }
 
 function einstellungenEigeneR() {
@@ -3041,6 +3097,19 @@ function einstellungenSpeichern() {
     toastZ('Bitte eine gültige Internetadresse eingeben.', 'err');
     return;
   }
+  const gw = id => {
+    const roh = wert(id).trim().replace(',', '.');
+    if (roh === '') return 1;
+    const v = Number(roh);
+    return Number.isFinite(v) && v >= 0 && v <= 10 ? v : null;
+  };
+  const gewicht = { niveau: gw('e-g-niveau'), note: gw('e-g-note'), training: gw('e-g-training') };
+  const falsch = Object.keys(gewicht).find(k => gewicht[k] === null);
+  if (falsch) {
+    document.getElementById('e-g-' + falsch)?.classList.add('err');
+    toastZ('Gewichtung: bitte eine Zahl von 0 bis 10 eingeben.', 'err');
+    return;
+  }
   const eigene = [];
   for (const l of modal.eigene) {
     if (!String(l.url || '').trim() && !String(l.name || '').trim()) continue;   // leere Zeilen ignorieren
@@ -3056,6 +3125,7 @@ function einstellungenSpeichern() {
   const verein = wert('e-verein').trim();
   if (verein) e.verein = verein; else delete e.verein;
   e.eigeneLinks = eigene;
+  e.gewicht = gewicht;
   speichern();
   modalSch();
   allesR();
