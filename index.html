@@ -862,6 +862,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="db-torschuetzen"></div>
       <div id="db-scorer"></div>
       <div id="db-noten"></div>
+      <div id="db-einsaetze"></div>
     </section>
 
     <!-- Match -->
@@ -1737,6 +1738,9 @@ function dashboardSpielSpeichern() {
         zeitSek: t.zeitSek
       }))
   };
+
+  const einsaetze = einsaetzeAusAufstellung();
+  if (einsaetze.length) eintrag.einsaetze = einsaetze;   // nur setzen, wenn es Daten gibt (sonst bleiben vorhandene erhalten)
 
   const idx = S.dashboardSpiele.findIndex(spiel => spiel.key === key);
   if (idx >= 0) {
@@ -4312,6 +4316,7 @@ function spielerFotoModal(id) {
     + kachel(st.tore, 'Tore') + kachel(st.vorlagen, 'Vorlagen') + kachel(st.spiele, 'Spiele mit Tor') + kachel(st.viertel, 'Viertel im Plan')
     + '</div>'
     + trainingProfilHtml(sp)
+    + einsatzProfilHtml(sp)
     + notenProfilHtml(sp)
     + '<div class="fg"><label for="profil-notiz">Notiz (nur für dich)</label>'
     + '<textarea id="profil-notiz" rows="4" placeholder="z. B. Stärken, woran er arbeitet, Besonderheiten …" '
@@ -4690,7 +4695,8 @@ function dashboardSpielBearbeiten(i) {
   modal = {
     typ: 'dashboardspiel', id: null, sterne: {}, index: i,
     heim: Number(sp.heim || 0), auswaerts: Number(sp.auswaerts || 0),
-    tore: (Array.isArray(sp.tore) ? sp.tore : []).map(t => Object.assign({}, t))
+    tore: (Array.isArray(sp.tore) ? sp.tore : []).map(t => Object.assign({}, t)),
+    einsaetze: (() => { const m = {}; (Array.isArray(sp.einsaetze) ? sp.einsaetze : []).forEach(e => { if (e.spielerId) m[e.spielerId] = (e.viertel || []).slice(); }); return m; })()
   };
   document.getElementById('modal-ti').textContent = 'Spiel bearbeiten';
   modalFooterSichtbar(true);
@@ -4743,7 +4749,32 @@ function dashboardSpielModalRender() {
     + '<ul style="list-style:none;display:flex;flex-direction:column;gap:.5rem;margin-bottom:.75rem">' + zeilen + '</ul>'
     + '<button class="btn btn-out btn-sm" type="button" onclick="dashboardModalTorAdd()">＋ Tor hinzufügen</button>'
     + '<p style="color:var(--mut);font-size:.75rem;margin-top:.5rem">Die Torschützen ändern das Ergebnis nicht. Das Ergebnis stellst du oben ein.</p>'
+    + '</div>'
+    + '<div class="fg"><label>Einsätze (Viertel)</label>'
+    + '<p style="color:var(--mut);font-size:.75rem;margin-bottom:.375rem">Tippe auf die Viertel, in denen der Spieler gespielt hat.</p>'
+    + (S.spieler.length ? S.spieler.map(einsatzZeileHtml).join('') : '<p style="color:var(--mut);font-size:.8125rem">Noch keine Spieler.</p>')
     + '</div>';
+}
+
+function einsatzZeileHtml(s) {
+  const q = modal.einsaetze[s.id] || [];
+  const chips = Array.from({ length: spielTimer.viertel }, (_, i) =>
+    '<button type="button" class="timer-quarter-btn' + (q.includes(i + 1) ? ' active' : '') + '" style="min-height:34px;min-width:38px;padding:0 .25rem" onclick="dashboardModalEinsatz(\'' + s.id + '\',' + (i + 1) + ')">V' + (i + 1) + '</button>').join('');
+  return '<div id="ez-' + s.id + '" style="display:flex;align-items:center;gap:.5rem;padding:.375rem 0;border-bottom:1px solid var(--brd)">'
+    + avatarHtml(s.name, s.foto, 26)
+    + '<span style="flex:1;min-width:0;font-size:.875rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + h(s.name) + '</span>'
+    + '<div style="display:flex;gap:.25rem">' + chips + '</div></div>';
+}
+
+function dashboardModalEinsatz(id, q) {
+  if (modal?.typ !== 'dashboardspiel') return;
+  const arr = modal.einsaetze[id] || (modal.einsaetze[id] = []);
+  const k = arr.indexOf(q);
+  if (k >= 0) arr.splice(k, 1); else arr.push(q);
+  arr.sort((a, b) => a - b);
+  const sp = S.spieler.find(x => x.id === id);
+  const el = document.getElementById('ez-' + id);
+  if (sp && el) el.outerHTML = einsatzZeileHtml(sp);
 }
 
 function dashboardModalScore(feld, wert) {
@@ -4783,6 +4814,11 @@ function dashboardSpielBearbeitenSpeichern() {
   sp.heim = modal.heim;
   sp.auswaerts = modal.auswaerts;
   sp.tore = modal.tore;
+  const alteEinsaetze = (Array.isArray(sp.einsaetze) ? sp.einsaetze : []).filter(e => e.spielerId && !S.spieler.some(x => x.id === e.spielerId)); // gelöschte Spieler bleiben erhalten
+  const neueEinsaetze = S.spieler.filter(x => (modal.einsaetze[x.id] || []).length)
+    .map(x => ({ spielerId: x.id, name: x.name, viertel: modal.einsaetze[x.id].slice() }));
+  const alleEinsaetze = alteEinsaetze.concat(neueEinsaetze);
+  if (alleEinsaetze.length) sp.einsaetze = alleEinsaetze; else delete sp.einsaetze;
   speichern();
   modalSch();
   dbR();
@@ -4805,7 +4841,7 @@ function torschuetzenR() {
   if (!el) return;
 
   const spiele = Array.isArray(S.dashboardSpiele) ? S.dashboardSpiele : [];
-  if (!spiele.length) { el.innerHTML = ''; scorerR(); notenR(); return; }
+  if (!spiele.length) { el.innerHTML = ''; scorerR(); notenR(); einsatzR(); return; }
 
   const stat = {};
   let toreGesamt = 0, ohneSchuetze = 0;
@@ -4872,6 +4908,7 @@ function torschuetzenR() {
   el.innerHTML = html + '</div>';
   scorerR();
   notenR();
+  einsatzR();
 }
 
 let dbAlleScorer = false;
@@ -5122,6 +5159,101 @@ function notenR() {
     + (zeilen.length > LIMIT
         ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-top:.5rem" onclick="dbNotenUmschalten()">' + (dbAlleNoten ? 'Weniger anzeigen' : 'Alle ' + zeilen.length + ' anzeigen') + '</button>'
         : '')
+    + '</div>';
+}
+
+/* ===== EINSÄTZE (wie oft hat jeder Spieler gespielt) ===== */
+
+// Beim Speichern eines Spiels: Viertel je Spieler aus der Aufstellung bzw. dem Einsatzplan übernehmen
+function einsaetzeAusAufstellung() {
+  const team = S.aufstellung && S.aufstellung.team === 'B' ? 'B' : 'A';
+  const proSpieler = {};
+  for (let q = 0; q < spielTimer.viertel; q++) {
+    const d = matchAufstellungDaten(team, q);
+    if (!d) continue;
+    d.row.filter(Boolean).forEach(id => { (proSpieler[id] = proSpieler[id] || []).push(q + 1); });
+  }
+  return Object.keys(proSpieler).map(id => ({
+    spielerId: id,
+    name: (S.spieler.find(x => x.id === id) || {}).name || '',
+    viertel: proSpieler[id]
+  }));
+}
+
+function einsatzFarbe(pct) { return pct >= 70 ? '#10B981' : pct >= 50 ? '#d97706' : '#EF4444'; }
+
+function einsatzStatistik() {
+  const alle = Array.isArray(S.dashboardSpiele) ? S.dashboardSpiele : [];
+  const spiele = alle.filter(sp => Array.isArray(sp.einsaetze) && sp.einsaetze.length);
+  const N = spiele.length;
+  const stat = {};
+  const zuordnen = (id, name) => {
+    const nm = String(name || '').trim().toLowerCase();
+    const aktuell = (id && S.spieler.find(x => x.id === id)) || (nm && S.spieler.find(x => String(x.name || '').trim().toLowerCase() === nm)) || null;
+    if (!aktuell && !nm) return null;
+    const k = aktuell ? aktuell.id : 'n:' + nm;
+    if (!stat[k]) stat[k] = { id: aktuell ? aktuell.id : null, name: aktuell ? aktuell.name : name, foto: aktuell && aktuell.foto ? aktuell.foto : null, spiele: 0, viertel: 0 };
+    return stat[k];
+  };
+  S.spieler.forEach(s => zuordnen(s.id, s.name));   // auch Spieler ohne Einsatz erscheinen
+  spiele.forEach(sp => sp.einsaetze.forEach(e => {
+    const z = zuordnen(e.spielerId, e.name);
+    const n = Array.isArray(e.viertel) ? e.viertel.length : 0;
+    if (z && n > 0) { z.spiele++; z.viertel += n; }
+  }));
+  const mog = N * spielTimer.viertel;
+  const zeilen = Object.values(stat)
+    .map(z => Object.assign(z, { pct: mog ? Math.round(z.viertel / mog * 100) : 0 }))
+    .sort((a, b) => b.viertel - a.viertel || b.spiele - a.spiele || a.name.localeCompare(b.name, 'de'));
+  return { N, ohneDaten: alle.length - N, mog, zeilen };
+}
+
+function einsatzProfilHtml(sp) {
+  const st = einsatzStatistik();
+  if (!st.N) return '';
+  const z = st.zeilen.find(x => x.id === sp.id);
+  if (!z) return '';
+  return '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:1rem;padding:.5rem .625rem;background:var(--bg);border:1px solid var(--brd);border-radius:var(--rs)">'
+    + '<span style="font-size:.8125rem;font-weight:700;color:var(--txt)">🏃 Einsätze</span>'
+    + '<span style="font-size:.875rem">' + z.viertel + ' von ' + st.mog + ' Vierteln · ' + z.spiele + ' von ' + st.N + ' Spielen · <b style="color:' + einsatzFarbe(z.pct) + '">' + z.pct + ' %</b></span></div>';
+}
+
+let dbAlleEinsaetze = false;
+
+function dbEinsaetzeUmschalten() {
+  dbAlleEinsaetze = !dbAlleEinsaetze;
+  einsatzR();
+}
+
+function einsatzR() {
+  const el = document.getElementById('db-einsaetze');
+  if (!el) return;
+  const st = einsatzStatistik();
+  if (!st.N) { el.innerHTML = ''; return; }
+
+  const LIMIT = 5;
+  const c = 'padding:.4rem .2rem;text-align:center;white-space:nowrap';
+  const th = 'padding:.35rem .2rem;text-align:center;font-weight:700';
+  const rows = st.zeilen.slice(0, dbAlleEinsaetze ? st.zeilen.length : LIMIT).map((x, i) =>
+    '<tr ' + (x.id ? 'onclick="spielerFotoModal(\'' + x.id + '\')" style="cursor:pointer;' : 'style="') + (i % 2 ? 'background:rgba(148,163,184,.08);' : '') + '">'
+    + '<td style="padding:.3rem .25rem .3rem .5rem;text-align:left"><span style="display:flex;align-items:center;gap:.4rem;min-width:0">' + avatarHtml(x.name, x.foto, 24)
+    + '<span style="font-size:.8125rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + h(x.name) + '</span></span></td>'
+    + '<td style="' + c + '">' + x.spiele + ' / ' + st.N + '</td>'
+    + '<td style="' + c + '">' + x.viertel + ' / ' + st.mog + '</td>'
+    + '<td style="' + c + ';font-weight:800;color:' + einsatzFarbe(x.pct) + ';padding-right:.5rem">' + x.pct + ' %</td></tr>').join('');
+
+  el.innerHTML = '<div style="margin-bottom:.9rem">'
+    + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">'
+    + '<span style="font-size:1rem;font-weight:800;color:var(--prim)">🏃 Einsätze</span>'
+    + '<span style="font-size:.6875rem;color:var(--mut)">gespielte Viertel</span></div>'
+    + '<div class="karte" style="padding:.5rem .25rem"><table style="width:100%;border-collapse:collapse;font-size:.75rem">'
+    + '<thead><tr style="color:var(--mut);font-size:.625rem;text-transform:uppercase;letter-spacing:.03em;border-bottom:2px solid var(--brd)">'
+    + '<th style="' + th + ';text-align:left;padding-left:.5rem">Spieler</th><th style="' + th + '">Spiele</th><th style="' + th + '">Viertel</th><th style="' + th + ';padding-right:.5rem">Quote</th></tr></thead>'
+    + '<tbody>' + rows + '</tbody></table></div>'
+    + (st.zeilen.length > LIMIT
+        ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-top:.5rem" onclick="dbEinsaetzeUmschalten()">' + (dbAlleEinsaetze ? 'Weniger anzeigen' : 'Alle ' + st.zeilen.length + ' anzeigen') + '</button>'
+        : '')
+    + (st.ohneDaten ? '<p style="color:var(--mut);font-size:.75rem;margin-top:.625rem">ℹ️ ' + st.ohneDaten + ' Spiel' + (st.ohneDaten !== 1 ? 'e' : '') + ' ohne Einsatzdaten (zum Ergänzen das Spiel mit ✏️ bearbeiten)</p>' : '')
     + '</div>';
 }
 
