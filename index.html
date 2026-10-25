@@ -1001,7 +1001,7 @@ const TEAM_KEYS  = ['I','II','III','IV','V','VI'];
 const TEAM_ICONS = { I:'🟦', II:'🟥', III:'🟩', IV:'🟨', V:'🟧', VI:'🟪' };
 
 /* ===== STATE ===== */
-let S = { spieler:[], trainer:[], schwerpunkte:[], mannschaften:['I','II','III'], einstellungen:{}, spielplanung:{viertel:4,dauerMin:15,lineupA:[],lineupB:[],gk1A:null,gk1B:null}, spielstand:{heim:0,auswaerts:0,tore:[], unsereMannschaft:'heim'}, dashboardSpiele:[], tabelle:{zeilen:[],stand:''}, aufstellung:{team:'A',q:0,formation:'2-3-1',lineup:{A:[],B:[]}}, gegner:{viertel:4,spieler:['1','2','3','5','6','7','8','9','10','11','12'],lineup:[],twPerQ:[],code:'GEG'} };
+let S = { spieler:[], trainer:[], schwerpunkte:[], mannschaften:['I','II','III'], einstellungen:{}, spielplanung:{viertel:4,dauerMin:15,lineupA:[],lineupB:[],gk1A:null,gk1B:null}, spielstand:{heim:0,auswaerts:0,tore:[], unsereMannschaft:'heim'}, dashboardSpiele:[], training:{einheiten:[]}, tabelle:{zeilen:[],stand:''}, aufstellung:{team:'A',q:0,formation:'2-3-1',lineup:{A:[],B:[]}}, gegner:{viertel:4,spieler:['1','2','3','5','6','7','8','9','10','11','12'],lineup:[],twPerQ:[],code:'GEG'} };
 let aktiverPlan = null;
 let modal = { typ:null, id:null, sterne:{} };
 let toastTimer = null;
@@ -1051,6 +1051,7 @@ function datenUebernehmen(d) {
   S.dashboardSpiele = Array.isArray(d.dashboardSpiele) ? d.dashboardSpiele : [];
   S.gegner         = Object.assign({viertel:4,spieler:['1','2','3','5','6','7','8','9','10','11','12'],lineup:[],twPerQ:[],code:'GEG'}, d.gegner||{});
   S.tabelle        = (d.tabelle && Array.isArray(d.tabelle.zeilen)) ? d.tabelle : {zeilen:[],stand:''};
+  S.training       = (d.training && Array.isArray(d.training.einheiten)) ? d.training : {einheiten:[]};
   S.aufstellung    = Object.assign({team:'A',q:0,formation:'2-3-1',lineup:{A:[],B:[]}}, d.aufstellung||{});
   if (!S.aufstellung.lineup || typeof S.aufstellung.lineup !== 'object') S.aufstellung.lineup = {A:[],B:[]};
   normalizeGegnerState();
@@ -1958,9 +1959,207 @@ function trainingR() {
     </div>
     <div class="tr-ber" style="margin-bottom:0">
       <button class="btn btn-prim btn-full" onclick="planErstellen()">🗒️ Trainingsplan erstellen</button>
-    </div>`;
+    </div>
+    <div id="anw-statistik" style="margin-top:1.25rem"></div>`;
 
   teamsR(document.getElementById('teams-ziel'));
+  trainingAnwesenheitR();
+}
+
+/* ===== TRAININGSANWESENHEIT ===== */
+
+function datumIso(d) {
+  const z = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+}
+
+function datumAnzeige(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function trainingEinheiten() {
+  if (!S.training || !Array.isArray(S.training.einheiten)) S.training = { einheiten: [] };
+  return S.training.einheiten;
+}
+
+function trainingStatistik() {
+  const einheiten = trainingEinheiten();
+  const N = einheiten.length;
+  const zeilen = S.spieler.map(s => {
+    const n = einheiten.filter(e => Array.isArray(e.spieler) && e.spieler.includes(s.id)).length;
+    return { s, n, pct: N ? Math.round(n / N * 100) : 0 };
+  }).sort((a, b) => b.n - a.n || a.s.name.localeCompare(b.s.name, 'de'));
+  return { N, zeilen };
+}
+
+function trainingFarbe(pct) { return pct >= 80 ? '#10B981' : pct >= 50 ? '#d97706' : '#EF4444'; }
+
+// Heutige Anwesenheit (aus dem Team-Reiter) als Training speichern
+function trainingSpeichern() {
+  const anw = S.spieler.filter(s => s.anwesend);
+  if (!anw.length) { toastZ('Keine anwesenden Spieler markiert.', 'err'); return; }
+  const heute = datumIso(new Date());
+  const einheiten = trainingEinheiten();
+  const vorhanden = einheiten.find(e => e.datum === heute);
+  const ids = anw.map(s => s.id);
+  if (vorhanden) {
+    vorhanden.spieler = ids;
+    toastZ('✅ Training von heute aktualisiert', 'ok');
+  } else {
+    einheiten.push({ id: genId(), datum: heute, spieler: ids });
+    toastZ('✅ Training gespeichert (' + ids.length + ' Spieler)', 'ok');
+  }
+  einheiten.sort((a, b) => b.datum.localeCompare(a.datum));
+  speichern();
+  trainingAnwesenheitR();
+}
+
+let trainingAlleListe = false;
+let trainingAlleTabelle = false;
+
+function trainingUmschalten(was) {
+  if (was === 'liste') trainingAlleListe = !trainingAlleListe; else trainingAlleTabelle = !trainingAlleTabelle;
+  trainingAnwesenheitR();
+}
+
+function trainingAnwesenheitR() {
+  const el = document.getElementById('anw-statistik');
+  if (!el) return;
+  const einheiten = trainingEinheiten();
+  const aSp = S.spieler.filter(s => s.anwesend).length;
+  const { N, zeilen } = trainingStatistik();
+
+  let html = '<div class="ber-ti" style="margin-bottom:.5rem">📅 Trainingsanwesenheit</div>'
+    + '<div class="karte" style="padding:.75rem;margin-bottom:.625rem">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap">'
+    + '<span style="font-size:.875rem">Heute anwesend: <b>' + aSp + '</b> von ' + S.spieler.length + '</span>'
+    + '<button class="btn btn-prim btn-sm" type="button" onclick="trainingSpeichern()">💾 Training speichern</button></div>'
+    + '<p style="font-size:.75rem;color:var(--mut);margin-top:.5rem">Markiere im Team-Reiter mit ✅ / ⭕, wer da ist, und tippe dann auf „Training speichern“.</p>'
+    + '</div>';
+
+  // Vergangene Trainings
+  const LIMIT = 3;
+  const sichtbar = einheiten.slice(0, trainingAlleListe ? einheiten.length : LIMIT);
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.375rem">'
+    + '<span style="font-size:.8125rem;font-weight:700;color:var(--mut)">Trainings (' + N + ')</span>'
+    + '<button class="btn btn-out btn-sm" type="button" onclick="trainingBearbeiten()">＋ Nachtragen</button></div>';
+  html += N
+    ? '<ul style="list-style:none;display:flex;flex-direction:column;gap:.375rem;margin-bottom:.625rem">' + sichtbar.map(e =>
+        '<li class="we-z" style="padding:.375rem .625rem">'
+        + '<span style="flex:1;min-width:0;font-weight:600">' + h(datumAnzeige(e.datum)) + '</span>'
+        + '<span style="font-size:.8125rem;color:var(--mut)">' + (e.spieler || []).length + ' Spieler</span>'
+        + '<button class="ib edit" type="button" onclick="trainingBearbeiten(\'' + e.id + '\')" aria-label="Training bearbeiten" style="width:32px;height:32px;font-size:.85rem">✏️</button>'
+        + '<button class="ib" type="button" onclick="trainingLoeschen(\'' + e.id + '\')" aria-label="Training löschen" style="width:32px;height:32px;font-size:.85rem">🗑️</button>'
+        + '</li>').join('') + '</ul>'
+      + (N > LIMIT ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-bottom:.625rem" onclick="trainingUmschalten(\'liste\')">' + (trainingAlleListe ? 'Weniger anzeigen' : 'Alle ' + N + ' Trainings anzeigen') + '</button>' : '')
+    : '<p style="color:var(--mut);font-size:.8125rem;margin-bottom:.625rem">Noch kein Training gespeichert.</p>';
+
+  // Statistik pro Spieler
+  if (N && zeilen.length) {
+    const TL = 5;
+    const c = 'padding:.4rem .2rem;text-align:center;white-space:nowrap';
+    const th = 'padding:.35rem .2rem;text-align:center;font-weight:700';
+    const rows = zeilen.slice(0, trainingAlleTabelle ? zeilen.length : TL).map((x, i) =>
+      '<tr onclick="spielerFotoModal(\'' + x.s.id + '\')" style="cursor:pointer;' + (i % 2 ? 'background:rgba(148,163,184,.08);' : '') + '">'
+      + '<td style="padding:.3rem .25rem .3rem .5rem;text-align:left"><span style="display:flex;align-items:center;gap:.4rem;min-width:0">' + avatarHtml(x.s.name, x.s.foto, 24)
+      + '<span style="font-size:.8125rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + h(x.s.name) + '</span></span></td>'
+      + '<td style="' + c + '">' + x.n + ' / ' + N + '</td>'
+      + '<td style="' + c + ';font-weight:800;color:' + trainingFarbe(x.pct) + ';padding-right:.5rem">' + x.pct + ' %</td></tr>').join('');
+    html += '<div style="font-size:.8125rem;font-weight:700;color:var(--mut);margin-bottom:.375rem">Beteiligung pro Spieler</div>'
+      + '<div class="karte" style="padding:.5rem .25rem"><table style="width:100%;border-collapse:collapse;font-size:.75rem">'
+      + '<thead><tr style="color:var(--mut);font-size:.625rem;text-transform:uppercase;letter-spacing:.03em;border-bottom:2px solid var(--brd)">'
+      + '<th style="' + th + ';text-align:left;padding-left:.5rem">Spieler</th><th style="' + th + '">Training</th><th style="' + th + ';padding-right:.5rem">Quote</th></tr></thead>'
+      + '<tbody>' + rows + '</tbody></table></div>'
+      + (zeilen.length > TL ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-top:.5rem" onclick="trainingUmschalten(\'tabelle\')">' + (trainingAlleTabelle ? 'Weniger anzeigen' : 'Alle ' + zeilen.length + ' anzeigen') + '</button>' : '');
+  }
+  el.innerHTML = html;
+}
+
+function trainingProfilHtml(sp) {
+  const { N, zeilen } = trainingStatistik();
+  if (!N) return '';
+  const z = zeilen.find(x => x.s.id === sp.id);
+  if (!z) return '';
+  return '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:1rem;padding:.5rem .625rem;background:var(--bg);border:1px solid var(--brd);border-radius:var(--rs)">'
+    + '<span style="font-size:.8125rem;font-weight:700;color:var(--txt)">📅 Training</span>'
+    + '<span style="font-size:.875rem">' + z.n + ' von ' + N + ' · <b style="color:' + trainingFarbe(z.pct) + '">' + z.pct + ' %</b></span></div>';
+}
+
+/* --- Training nachtragen / bearbeiten --- */
+
+function trainingListeHtml() {
+  return S.spieler.map(s =>
+    '<label style="display:flex;align-items:center;gap:.625rem;padding:.375rem 0;border-bottom:1px solid var(--brd);min-height:44px;cursor:pointer">'
+    + '<input type="checkbox" ' + (modal.auswahl.has(s.id) ? 'checked ' : '') + 'onchange="trainingToggle(\'' + s.id + '\', this.checked)" style="width:22px;height:22px;flex-shrink:0">'
+    + avatarHtml(s.name, s.foto, 28)
+    + '<span style="flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + h(s.name) + '</span></label>').join('');
+}
+
+function trainingBearbeiten(id) {
+  const e = id ? trainingEinheiten().find(x => x.id === id) : null;
+  modal = { typ: 'training', id: id || null, sterne: {}, datum: e ? e.datum : datumIso(new Date()), auswahl: new Set(e ? (e.spieler || []) : []) };
+  document.getElementById('modal-ti').textContent = e ? 'Training bearbeiten' : 'Training nachtragen';
+  document.getElementById('modal-body').innerHTML =
+    '<div class="fg"><label for="t-datum">Datum</label>'
+    + '<input id="t-datum" type="date" value="' + h(modal.datum) + '" max="' + datumIso(new Date()) + '" oninput="modal.datum=this.value"></div>'
+    + '<div style="display:flex;gap:.5rem;margin-bottom:.5rem">'
+    + '<button class="btn btn-out btn-sm" type="button" onclick="trainingAlleWaehlen(true)">Alle</button>'
+    + '<button class="btn btn-out btn-sm" type="button" onclick="trainingAlleWaehlen(false)">Keine</button>'
+    + '<span id="t-zaehler" style="margin-left:auto;align-self:center;font-size:.8125rem;color:var(--mut)"></span></div>'
+    + '<div id="t-liste">' + trainingListeHtml() + '</div>';
+  trainingZaehlerR();
+  modalFooterSichtbar(true);
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+
+function trainingZaehlerR() {
+  const el = document.getElementById('t-zaehler');
+  if (el && modal?.typ === 'training') el.textContent = modal.auswahl.size + ' von ' + S.spieler.length + ' dabei';
+}
+
+function trainingToggle(id, an) {
+  if (modal?.typ !== 'training') return;
+  if (an) modal.auswahl.add(id); else modal.auswahl.delete(id);
+  trainingZaehlerR();
+}
+
+function trainingAlleWaehlen(an) {
+  if (modal?.typ !== 'training') return;
+  modal.auswahl = new Set(an ? S.spieler.map(s => s.id) : []);
+  document.getElementById('t-liste').innerHTML = trainingListeHtml();
+  trainingZaehlerR();
+}
+
+function trainingBearbeitenSpeichern() {
+  if (modal?.typ !== 'training') return;
+  const datum = modal.datum;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datum || '')) { toastZ('Bitte ein Datum wählen.', 'err'); return; }
+  if (!modal.auswahl.size) { toastZ('Mindestens ein Spieler muss dabei sein.', 'err'); return; }
+  const einheiten = trainingEinheiten();
+  if (einheiten.some(x => x.datum === datum && x.id !== modal.id)) { toastZ('Für dieses Datum gibt es schon ein Training.', 'err'); return; }
+  const ids = S.spieler.filter(s => modal.auswahl.has(s.id)).map(s => s.id);
+  if (modal.id) {
+    const e = einheiten.find(x => x.id === modal.id);
+    if (e) { e.datum = datum; e.spieler = ids; }
+  } else {
+    einheiten.push({ id: genId(), datum, spieler: ids });
+  }
+  einheiten.sort((a, b) => b.datum.localeCompare(a.datum));
+  speichern();
+  modalSch();
+  trainingAnwesenheitR();
+  toastZ('✅ Training gespeichert', 'ok');
+}
+
+function trainingLoeschen(id) {
+  const e = trainingEinheiten().find(x => x.id === id);
+  if (!e) return;
+  bestaetigen('Training löschen', 'Das Training vom ' + datumAnzeige(e.datum) + ' wirklich löschen?', 'Löschen', () => {
+    S.training.einheiten = S.training.einheiten.filter(x => x.id !== id);
+    speichern();
+    trainingAnwesenheitR();
+  });
 }
 
 /* ===== TRAININGSPLAN ===== */
@@ -3711,6 +3910,7 @@ function formSpeichern() {
   if (modal.typ === 'dashboardspiel') { dashboardSpielBearbeitenSpeichern(); return; }
   if (modal.typ === 'einstellungen') { einstellungenSpeichern(); return; }
   if (modal.typ === 'noten') { notenSpeichern(); return; }
+  if (modal.typ === 'training') { trainingBearbeitenSpeichern(); return; }
   const nameEl = document.getElementById('f-name');
   if (!nameEl?.value.trim()) {
     nameEl?.classList.add('err');
@@ -4111,6 +4311,7 @@ function spielerFotoModal(id) {
     + '<div style="display:flex;gap:.5rem;margin-bottom:1rem">'
     + kachel(st.tore, 'Tore') + kachel(st.vorlagen, 'Vorlagen') + kachel(st.spiele, 'Spiele mit Tor') + kachel(st.viertel, 'Viertel im Plan')
     + '</div>'
+    + trainingProfilHtml(sp)
     + notenProfilHtml(sp)
     + '<div class="fg"><label for="profil-notiz">Notiz (nur für dich)</label>'
     + '<textarea id="profil-notiz" rows="4" placeholder="z. B. Stärken, woran er arbeitet, Besonderheiten …" '
