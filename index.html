@@ -4911,7 +4911,7 @@ function torschuetzenR() {
   if (!el) return;
 
   const spiele = Array.isArray(S.dashboardSpiele) ? S.dashboardSpiele : [];
-  if (!spiele.length) { el.innerHTML = ''; scorerR(); notenR(); einsatzR(); return; }
+  if (!spiele.length) { el.innerHTML = ''; scorerR(); notenR(); einsatzStatistikR(); return; }
 
   const stat = {};
   let toreGesamt = 0, ohneSchuetze = 0;
@@ -4978,7 +4978,7 @@ function torschuetzenR() {
   el.innerHTML = html + '</div>';
   scorerR();
   notenR();
-  einsatzR();
+  einsatzStatistikR();
 }
 
 let dbAlleScorer = false;
@@ -5292,10 +5292,10 @@ let dbAlleEinsaetze = false;
 
 function dbEinsaetzeUmschalten() {
   dbAlleEinsaetze = !dbAlleEinsaetze;
-  einsatzR();
+  einsatzStatistikR();
 }
 
-function einsatzR() {
+function einsatzStatistikR() {
   const el = document.getElementById('db-einsaetze');
   if (!el) return;
   const st = einsatzStatistik();
