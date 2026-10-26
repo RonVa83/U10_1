@@ -1,38 +1,61 @@
-// Offline-Modus: online wird immer die neueste Version geladen, ohne Netz die zuletzt gespeicherte.
-const CACHE = 'trainingsplaner-v1';
-const DATEIEN = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+/* EbeApp Service Worker – robustes Offline-Verhalten und kontrollierte Updates. */
+const CACHE_PREFIX = 'ebeapp-static-';
+const CACHE = `${CACHE_PREFIX}v2`;
+const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(DATEIEN)).then(() => self.skipWaiting()));
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE)
+      .then(cache => cache.addAll(APP_SHELL))
+      .then(() => self.skipWaiting())
+  );
 });
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
+self.addEventListener('activate', event => {
+  event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(key => (key.startsWith(CACHE_PREFIX) || key === 'trainingsplaner-v1') && key !== CACHE).map(key => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', e => {
-  const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  const netz = fetch(req).then(res => {
-    if (res.ok) {
-      const kopie = res.clone();
-      caches.open(CACHE).then(c => c.put(req, kopie));
-    }
-    return res;
-  });
-  // Bei schlechtem Netz (z. B. am Sportplatz) nach 4 Sekunden auf die gespeicherte Version wechseln
-  const zeit = new Promise((_, nein) => setTimeout(() => nein(new Error('timeout')), 4000));
+  // Navigations: Netzwerk zuerst, aber nach kurzer Wartezeit zuverlässig aus Cache laden.
+  if (request.mode === 'navigate') {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('network-timeout')), 3500);
+      });
+      try {
+        const response = await Promise.race([fetch(request), timeout]);
+        clearTimeout(timeoutId);
+        if (response && response.ok) cache.put('./index.html', response.clone()).catch(() => {});
+        return response;
+      } catch (_) {
+        clearTimeout(timeoutId);
+        return (await cache.match(request)) || (await cache.match('./index.html')) || Response.error();
+      }
+    })());
+    return;
+  }
 
-  e.respondWith(
-    Promise.race([netz, zeit]).catch(() =>
-      caches.match(req, { ignoreSearch: true })
-        .then(r => r || (req.mode === 'navigate' ? caches.match('./index.html') : null))
-        .then(r => r || netz)
-    )
-  );
+  // Statische App-Dateien: Netzwerk bevorzugen, bei Offline-Betrieb Cache verwenden.
+  if (APP_SHELL.some(path => new URL(path, self.registration.scope).pathname === url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const response = await fetch(request);
+        if (response && response.ok) cache.put(request, response.clone()).catch(() => {});
+        return response;
+      } catch (_) {
+        return (await cache.match(request, { ignoreSearch: true })) || Response.error();
+      }
+    })());
+  }
 });

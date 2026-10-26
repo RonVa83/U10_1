@@ -1022,8 +1022,14 @@ const spielTimer = {
 /* ===== PERSISTENZ ===== */
 
 function speichern() {
-  try { localStorage.setItem(SK, JSON.stringify(S)); }
-  catch(_) { toastZ('Fehler beim Speichern!','err'); }
+  try {
+    localStorage.setItem(SK, JSON.stringify(S));
+    return true;
+  } catch (err) {
+    const voll = err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    toastZ(voll ? 'Speicher voll – bitte Daten sofort exportieren!' : 'Fehler beim Speichern. Bitte Daten exportieren!', 'err');
+    return false;
+  }
 }
 
 function normalizeGegnerState() {
@@ -1068,19 +1074,63 @@ function laden() {
 }
 
 /* ===== JSON EXPORT ===== */
-function jsonExportieren() {
+async function jsonExportieren() {
   if (!S.einstellungen || typeof S.einstellungen !== 'object') S.einstellungen = {};
   S.einstellungen.letztesBackup = new Date().toISOString();
-  speichern();
   const datum = new Date().toISOString().slice(0, 10);
-  const dateiname = 'trainingsdaten_' + datum + '.json';
-  const blob = new Blob([JSON.stringify(S, null, 2)], { type:'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), { href:url, download:dateiname });
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toastZ('💾 Exportiert: ' + dateiname,'ok');
-  dbR();
+  const dateiname = 'ebeapp-datensicherung-' + datum + '.json';
+  let blob;
+  try {
+    blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json;charset=utf-8' });
+  } catch (_) {
+    toastZ('Sicherung konnte nicht erstellt werden. Bitte Speicherplatz prüfen.', 'err');
+    return;
+  }
+
+  // Auf Mobilgeräten ist der native Teilen-Dialog oft zuverlässiger als ein
+  // automatischer Blob-Download (insbesondere bei iOS/Safari).
+  try {
+    const datei = new File([blob], dateiname, { type: 'application/json' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [datei] })) {
+      await navigator.share({ files: [datei], title: 'EbeApp-Datensicherung', text: 'JSON-Datensicherung der EbeApp' });
+      speichern();
+      toastZ('Datensicherung zum Teilen bereitgestellt.', 'ok');
+      dbR();
+      return;
+    }
+  } catch (err) {
+    // Abbruch im Teilen-Dialog ist kein Fehler; bei anderen Problemen folgt Download-Fallback.
+    if (err && err.name === 'AbortError') return;
+  }
+
+  let url = null;
+  try {
+    url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = dateiname;
+    a.rel = 'noopener';
+    a.style.position = 'fixed';
+    a.style.left = '-10000px';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Lange genug bestehen lassen, damit mobile Browser den Download übernehmen.
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+    speichern();
+    toastZ('Download wurde gestartet. Falls nichts erscheint, erneut tippen oder im Teilen-Menü „In Dateien sichern“ wählen.', 'ok');
+    dbR();
+  } catch (_) {
+    if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
+    // Letzter Fallback: JSON in einem Tab öffnen, damit es manuell gespeichert werden kann.
+    try {
+      const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(S, null, 2));
+      window.open(dataUrl, '_blank', 'noopener');
+      toastZ('Sicherung geöffnet. Im Browser-Menü bitte Teilen oder Speichern wählen.', 'ok');
+    } catch (__) {
+      toastZ('Download blockiert. Bitte im Browser-Menü „Teilen“ oder „In Dateien sichern“ verwenden.', 'err');
+    }
+  }
 }
 
 /* ===== JSON IMPORT ===== */
@@ -1092,16 +1142,25 @@ function jsonImportieren(datei) {
     let d;
     try {
       d = JSON.parse(e.target.result);
-      if (!d || (!Array.isArray(d.spieler) && !Array.isArray(d.trainer))) throw new Error('Unbekanntes Format');
-    } catch(_) { toastZ('Fehler: Ungültige JSON-Datei!','err'); return; }
+      if (!d || typeof d !== 'object' || Array.isArray(d)
+          || (!Array.isArray(d.spieler) && !Array.isArray(d.trainer))
+          || (d.spieler && !Array.isArray(d.spieler))
+          || (d.trainer && !Array.isArray(d.trainer))
+          || (d.dashboardSpiele && !Array.isArray(d.dashboardSpiele))) throw new Error('Unbekanntes Format');
+      // Größenlimit schützt mobile Geräte vor versehentlich ausgewählten Riesendateien.
+      if (datei.size > 15 * 1024 * 1024) throw new Error('Datei zu groß');
+    } catch(_) { toastZ('Import fehlgeschlagen: ungültige, zu große oder unpassende JSON-Datei.','err'); return; }
 
     const inhalt = (Array.isArray(d.spieler) ? d.spieler.length : 0) + ' Spieler, '
       + (Array.isArray(d.trainer) ? d.trainer.length : 0) + ' Trainer, '
       + (Array.isArray(d.dashboardSpiele) ? d.dashboardSpiele.length : 0) + ' Spiele';
-    bestaetigen('Daten importieren', 'Die Sicherung enthält ' + inhalt + '. Alle aktuellen Daten in der App werden dadurch ersetzt.', 'Importieren', () => {
+    bestaetigen('Daten importieren', 'Die Sicherung enthält ' + inhalt + '. Alle aktuellen Daten werden ersetzt. Exportiere bei Bedarf zuerst eine Sicherung der aktuellen Daten.', 'Importieren', () => {
+      // Vor dem Austausch die bisherigen Daten bestmöglich als Wiederherstellungspunkt sichern.
+      try { localStorage.setItem(SK + '_vor_import', JSON.stringify(S)); } catch (_) {}
       datenUebernehmen(d);
-      speichern(); allesR();
-      toastZ('📂 Daten erfolgreich importiert!','ok');
+      const ok = speichern();
+      allesR();
+      toastZ(ok ? '📂 Daten erfolgreich importiert!' : 'Import geladen, aber Speichern fehlgeschlagen – bitte sofort exportieren!', ok ? 'ok' : 'err');
     });
   };
   reader.readAsText(datei);
