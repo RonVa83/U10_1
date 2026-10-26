@@ -2975,6 +2975,7 @@ function spielplanungPlanR() {
       + '</select></label>'
     + buildGkSelect('A') + buildGkSelect('B')
     + '<button class="btn btn-prim btn-sm" onclick="einsatzPlanErstellen()">🔄 Erstellen</button>'
+    + '<div style="width:100%;font-size:.6875rem;color:var(--mut)">🧤 TW1 steht in V1, V2 und V4 im Tor, TW2 in V3 und spielt in V1 im Feld. Bei nur einem Torwart steht er in allen Vierteln im Tor. „Auto“ nimmt die Torhüter nach Niveau.</div>'
     + '</div><div id="einsatz-content"></div></div>';
   einsatzR();
 }
@@ -3614,15 +3615,19 @@ function setEinsatzPrevQ(q) {
 }
 
 function buildGkSelect(team) {
-  const tws = S.spieler.filter(s => s.spielteam === team && s.position === 'Torwart');
-  if (tws.length < 2) return '';
+  const kader = S.spieler.filter(s => s.spielteam === team);
+  if (!kader.length) return '';
   const icon = team === 'A' ? '🔵' : '🔴';
-  const sel  = (S.spielplanung && S.spielplanung['gk1'+team]) || '';
-  const opts = tws.map(s => '<option value="'+s.id+'"'+(sel===s.id?' selected':'')+'>'+h(s.name)+'</option>').join('');
-  return '<label style="font-size:.8125rem;color:var(--mut)">'+icon+' TW1 '
-    + '<select style="border:1.5px solid var(--brd);border-radius:4px;font-size:.8125rem;background:var(--bg);color:var(--txt);padding:.125rem .25rem"'
-    + ' onchange="einsatzGkAend(\''+team+'\',this.value)">'
-    + '<option value="">Auto</option>'+opts+'</select></label>';
+  const sp = S.spielplanung || {};
+  const sel1 = sp['gk1' + team] || '', sel2 = sp['gk2' + team] || '';
+  const geordnet = [...kader].sort((a, b) => (b.position === 'Torwart') - (a.position === 'Torwart'));   // Torhüter zuerst
+  const opts = sel => geordnet.map(s => '<option value="' + s.id + '"' + (sel === s.id ? ' selected' : '') + '>' + h(s.name) + (s.position === 'Torwart' ? ' 🧤' : '') + '</option>').join('');
+  const stil = 'border:1.5px solid var(--brd);border-radius:4px;font-size:.8125rem;background:var(--bg);color:var(--txt);padding:.125rem .25rem;max-width:120px';
+  return '<label style="font-size:.8125rem;color:var(--mut)">' + icon + ' TW1 '
+    + '<select style="' + stil + '" onchange="einsatzGkAend(\'' + team + '\',\'1\',this.value)"><option value="">Auto</option>' + opts(sel1) + '</select></label>'
+    + '<label style="font-size:.8125rem;color:var(--mut)">TW2 '
+    + '<select style="' + stil + '" onchange="einsatzGkAend(\'' + team + '\',\'2\',this.value)"><option value="">Auto</option>'
+    + '<option value="-"' + (sel2 === '-' ? ' selected' : '') + '>Keiner</option>' + opts(sel2) + '</select></label>';
 }
 
 function einsatzFormationAend(v) {
@@ -3641,39 +3646,34 @@ function einsatzFormationAend(v) {
   }
 }
 
-function einsatzGkAend(team, id) {
+function einsatzGkAend(team, nr, id) {
   if (!S.spielplanung) S.spielplanung = {viertel:4,dauerMin:15};
-  S.spielplanung['gk1'+team] = id || null;
+  S.spielplanung['gk' + nr + team] = id || null;
   speichern();
 }
 
-function spAutoBerechnen(spielerListe, gk1Id) {
+function spAutoBerechnen(spielerListe, gk1Id, gk2Id) {
   const viertel = (S.spielplanung && S.spielplanung.viertel) || 4;
   let gks    = spielerListe.filter(p => p.position === 'Torwart');
   if (!gks.length) gks = spielerListe.filter(p => p.position2 === 'Torwart'); // Ersatz: Spieler mit 2. Position Torwart
   gks.sort((a,b)=>(b.niveau||0)-(a.niveau||0));
-  // Manuell gewaehlter TW1 hat Vorrang, Fallback auf besten TW nach Niveau
-  const gk1    = gk1Id ? (gks.find(g => g.id === gk1Id) || gks[0]) : gks[0];
-  const gk2    = gks.find(g => g !== gk1) || gk1;
-  const gk1v   = gks.length >= 2 ? Math.ceil(viertel * 3 / 4) : viertel;
-let gkV = [];
 
-if (gks.length >= 2 && viertel === 4) {
-  gkV = [
-    gk1.id, // V1
-    gk1.id, // V2
-    gk2.id, // V3
-    gk1.id  // V4
-  ];
-} else {
-  gkV = Array.from({length:viertel}, (_,q) =>
-    gks.length === 0
-      ? null
-      : q < gk1v
-        ? gk1.id
-        : gk2.id
-  );
-}
+  // TW1 / TW2: manuell gewählt (hat Vorrang) oder automatisch nach Niveau; TW2 = "-" bedeutet bewusst keiner
+  const finde = id => (id && id !== '-') ? (spielerListe.find(p => p.id === id) || null) : null;
+  const g1man = finde(gk1Id), g2man = finde(gk2Id);
+  const rest  = gks.filter(g => g !== g1man && g !== g2man);
+  let gk1 = g1man || rest.shift() || null;
+  let gk2 = gk2Id === '-' ? null : (g2man || rest.shift() || null);
+  if (!gk1 && gk2) { gk1 = gk2; gk2 = null; }
+  if (gk1 && gk2 && gk1.id === gk2.id) gk2 = null;
+
+  // TW1 steht in V1, V2 und V4 im Tor, TW2 in V3. TW2 spielt in V1 im Feld.
+  let gkV;
+  if (!gk1) gkV = Array(viertel).fill(null);
+  else if (gk2 && viertel === 4) gkV = [gk1.id, gk1.id, gk2.id, gk1.id];
+  else if (gk2) gkV = Array.from({length:viertel}, (_,q) => q < Math.ceil(viertel * 3 / 4) ? gk1.id : gk2.id);
+  else gkV = Array(viertel).fill(gk1.id);
+  const feldPflichtV1 = gk2 ? gk2.id : null;
 const plays = {};
 const benches = {};
 
@@ -3703,6 +3703,12 @@ const sortiert = [...feldspieler]
 
     const pa = a.p;
     const pb = b.p;
+
+    // TW2 muss in V1 im Feld spielen: er wird nie zum Pausieren eingeteilt
+    if (q === 0 && feldPflichtV1) {
+      if (pa.id === feldPflichtV1) return 1;
+      if (pb.id === feldPflichtV1) return -1;
+    }
 
     if (benches[pa.id] !== benches[pb.id]) {
       return benches[pa.id] - benches[pb.id];
@@ -3738,8 +3744,6 @@ const spielende   = sortiert.slice(anzahlPausen);
 
   fieldV.push(einsatzFeldZuweisen(spielende));
 }
-console.log("Einsätze", plays);
-console.log("Pausen", benches);
   return Array.from({length:viertel}, (_,q) => [gkV[q], ...fieldV[q]]);
 }
 
@@ -3775,8 +3779,8 @@ function einsatzPlanErstellen() {
   const spB = verf.filter(s => s.spielteam === 'B');
   if (!spA.length && !spB.length) { toastZ('Zuerst Spieler auf Teams verteilen!','err'); return; }
   if (!S.spielplanung) S.spielplanung = {viertel:4,dauerMin:15};
-  S.spielplanung.lineupA = spAutoBerechnen(spA, S.spielplanung.gk1A);
-  S.spielplanung.lineupB = spAutoBerechnen(spB, S.spielplanung.gk1B);
+  S.spielplanung.lineupA = spAutoBerechnen(spA, S.spielplanung.gk1A, S.spielplanung.gk2A);
+  S.spielplanung.lineupB = spAutoBerechnen(spB, S.spielplanung.gk1B, S.spielplanung.gk2B);
   speichern(); spielplanungR();
   toastZ('✅ Einsatzplan erstellt','ok');
 }
