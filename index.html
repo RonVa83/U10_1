@@ -985,8 +985,9 @@ function ligaName()   { return einst().liga || LIGA_STANDARD; }
 function vereinName() { return einst().verein !== undefined ? einst().verein : EIGENER_VEREIN; }
 const LOGO_EBE = 'data:image/png;base64,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';
 
-const POSITIONEN  = ['Torwart','Abwehr','Mittelfeld','Sturm'];
-const POS_SHORT   = { Torwart:'TW', Abwehr:'AB', Mittelfeld:'MF', Sturm:'ST' };
+// Reihenfolge wie auf dem Platz; „Mittelfeld“ bleibt als Allgemein-Position erhalten (passt auf defensiv und offensiv)
+const POSITIONEN  = ['Torwart','Abwehr','Defensives Mittelfeld','Mittelfeld','Offensives Mittelfeld','Sturm'];
+const POS_SHORT   = { Torwart:'TW', Abwehr:'AB', 'Defensives Mittelfeld':'DM', Mittelfeld:'MF', 'Offensives Mittelfeld':'OM', Sturm:'ST' };
 const FUSS        = ['Rechts','Links','Beidfüßig'];
 const FUSS_SHORT  = { Rechts:'R', Links:'L', 'Beidfüßig':'B' };
 const KOMPETENZEN = [
@@ -1022,14 +1023,8 @@ const spielTimer = {
 /* ===== PERSISTENZ ===== */
 
 function speichern() {
-  try {
-    localStorage.setItem(SK, JSON.stringify(S));
-    return true;
-  } catch (err) {
-    const voll = err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED');
-    toastZ(voll ? 'Speicher voll – bitte Daten sofort exportieren!' : 'Fehler beim Speichern. Bitte Daten exportieren!', 'err');
-    return false;
-  }
+  try { localStorage.setItem(SK, JSON.stringify(S)); }
+  catch(_) { toastZ('Fehler beim Speichern!','err'); }
 }
 
 function normalizeGegnerState() {
@@ -1074,63 +1069,19 @@ function laden() {
 }
 
 /* ===== JSON EXPORT ===== */
-async function jsonExportieren() {
+function jsonExportieren() {
   if (!S.einstellungen || typeof S.einstellungen !== 'object') S.einstellungen = {};
   S.einstellungen.letztesBackup = new Date().toISOString();
+  speichern();
   const datum = new Date().toISOString().slice(0, 10);
-  const dateiname = 'ebeapp-datensicherung-' + datum + '.json';
-  let blob;
-  try {
-    blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json;charset=utf-8' });
-  } catch (_) {
-    toastZ('Sicherung konnte nicht erstellt werden. Bitte Speicherplatz prüfen.', 'err');
-    return;
-  }
-
-  // Auf Mobilgeräten ist der native Teilen-Dialog oft zuverlässiger als ein
-  // automatischer Blob-Download (insbesondere bei iOS/Safari).
-  try {
-    const datei = new File([blob], dateiname, { type: 'application/json' });
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [datei] })) {
-      await navigator.share({ files: [datei], title: 'EbeApp-Datensicherung', text: 'JSON-Datensicherung der EbeApp' });
-      speichern();
-      toastZ('Datensicherung zum Teilen bereitgestellt.', 'ok');
-      dbR();
-      return;
-    }
-  } catch (err) {
-    // Abbruch im Teilen-Dialog ist kein Fehler; bei anderen Problemen folgt Download-Fallback.
-    if (err && err.name === 'AbortError') return;
-  }
-
-  let url = null;
-  try {
-    url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = dateiname;
-    a.rel = 'noopener';
-    a.style.position = 'fixed';
-    a.style.left = '-10000px';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    // Lange genug bestehen lassen, damit mobile Browser den Download übernehmen.
-    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
-    speichern();
-    toastZ('Download wurde gestartet. Falls nichts erscheint, erneut tippen oder im Teilen-Menü „In Dateien sichern“ wählen.', 'ok');
-    dbR();
-  } catch (_) {
-    if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
-    // Letzter Fallback: JSON in einem Tab öffnen, damit es manuell gespeichert werden kann.
-    try {
-      const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(S, null, 2));
-      window.open(dataUrl, '_blank', 'noopener');
-      toastZ('Sicherung geöffnet. Im Browser-Menü bitte Teilen oder Speichern wählen.', 'ok');
-    } catch (__) {
-      toastZ('Download blockiert. Bitte im Browser-Menü „Teilen“ oder „In Dateien sichern“ verwenden.', 'err');
-    }
-  }
+  const dateiname = 'trainingsdaten_' + datum + '.json';
+  const blob = new Blob([JSON.stringify(S, null, 2)], { type:'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href:url, download:dateiname });
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toastZ('💾 Exportiert: ' + dateiname,'ok');
+  dbR();
 }
 
 /* ===== JSON IMPORT ===== */
@@ -1142,25 +1093,16 @@ function jsonImportieren(datei) {
     let d;
     try {
       d = JSON.parse(e.target.result);
-      if (!d || typeof d !== 'object' || Array.isArray(d)
-          || (!Array.isArray(d.spieler) && !Array.isArray(d.trainer))
-          || (d.spieler && !Array.isArray(d.spieler))
-          || (d.trainer && !Array.isArray(d.trainer))
-          || (d.dashboardSpiele && !Array.isArray(d.dashboardSpiele))) throw new Error('Unbekanntes Format');
-      // Größenlimit schützt mobile Geräte vor versehentlich ausgewählten Riesendateien.
-      if (datei.size > 15 * 1024 * 1024) throw new Error('Datei zu groß');
-    } catch(_) { toastZ('Import fehlgeschlagen: ungültige, zu große oder unpassende JSON-Datei.','err'); return; }
+      if (!d || (!Array.isArray(d.spieler) && !Array.isArray(d.trainer))) throw new Error('Unbekanntes Format');
+    } catch(_) { toastZ('Fehler: Ungültige JSON-Datei!','err'); return; }
 
     const inhalt = (Array.isArray(d.spieler) ? d.spieler.length : 0) + ' Spieler, '
       + (Array.isArray(d.trainer) ? d.trainer.length : 0) + ' Trainer, '
       + (Array.isArray(d.dashboardSpiele) ? d.dashboardSpiele.length : 0) + ' Spiele';
-    bestaetigen('Daten importieren', 'Die Sicherung enthält ' + inhalt + '. Alle aktuellen Daten werden ersetzt. Exportiere bei Bedarf zuerst eine Sicherung der aktuellen Daten.', 'Importieren', () => {
-      // Vor dem Austausch die bisherigen Daten bestmöglich als Wiederherstellungspunkt sichern.
-      try { localStorage.setItem(SK + '_vor_import', JSON.stringify(S)); } catch (_) {}
+    bestaetigen('Daten importieren', 'Die Sicherung enthält ' + inhalt + '. Alle aktuellen Daten in der App werden dadurch ersetzt.', 'Importieren', () => {
       datenUebernehmen(d);
-      const ok = speichern();
-      allesR();
-      toastZ(ok ? '📂 Daten erfolgreich importiert!' : 'Import geladen, aber Speichern fehlgeschlagen – bitte sofort exportieren!', ok ? 'ok' : 'err');
+      speichern(); allesR();
+      toastZ('📂 Daten erfolgreich importiert!','ok');
     });
   };
   reader.readAsText(datei);
@@ -3358,7 +3300,7 @@ function matchAufstellungR() {
 
 /* ===== AUFSTELLUNG (selbst erstellen) ===== */
 
-const FORMATIONEN = { '2-3-1':[2,3,1], '3-2-1':[3,2,1], '2-2-2':[2,1,1,2], '3-1-2':[3,1,2], '1-3-2':[1,3,2] }; // 2-2-2: Mittelfeld übereinander in der Mitte
+const FORMATIONEN = { '2-3-1':[2,3,1], '3-2-1':[3,2,1], '2-2-2':[2,1,1,2], '2-1-2-1':[2,1,2,1], '3-1-2':[3,1,2], '1-3-2':[1,3,2] }; // bei zwei Mittelfeld-Reihen (2-2-2, 2-1-2-1): unten defensiv (DM), oben offensiv (OM)
 
 function aufKader(team) {
   const t = S.spieler.filter(x => x.spielteam === team);
@@ -3379,7 +3321,13 @@ function aufLineup(team, q) {
 function aufSlots(formation) {
   const reihen = FORMATIONEN[formation] || FORMATIONEN['2-3-1'];
   const slots = [{ idx: 0, rolle: 'Torwart', seite: 'Mitte', kurz: 'TW' }];
-  const rolleVonReihe = reihen.map((_, ri) => ri === 0 ? 'Abwehr' : ri === reihen.length - 1 ? 'Sturm' : 'Mittelfeld');
+  const mittelReihen = reihen.length - 2;   // Anzahl der Mittelfeld-Reihen
+  const rolleVonReihe = reihen.map((_, ri) => {
+    if (ri === 0) return 'Abwehr';
+    if (ri === reihen.length - 1) return 'Sturm';
+    if (mittelReihen >= 2) return ri === 1 ? 'Defensives Mittelfeld' : ri === reihen.length - 2 ? 'Offensives Mittelfeld' : 'Mittelfeld';
+    return 'Mittelfeld';
+  });
   let idx = 1;
   reihen.forEach((anzahl, ri) => {
     const rolle = rolleVonReihe[ri];
@@ -3399,7 +3347,8 @@ function aufSlots(formation) {
   return slots;
 }
 
-const POS_ORDER = { Abwehr: 0, Mittelfeld: 1, Sturm: 2 };
+const POS_ORDER = { Abwehr: 0, 'Defensives Mittelfeld': 1, Mittelfeld: 1.5, 'Offensives Mittelfeld': 2, Sturm: 3 };
+const punkteFuerAbstand = d => d === 0 ? 10 : d <= 0.5 ? 8 : d <= 1 ? 4 : d <= 1.5 ? 2 : 0;
 
 // Wie gut passt ein Spieler auf einen Platz? (1. und 2. Position + starker Fuß)
 function aufPassung(sp, slot) {
@@ -3419,11 +3368,11 @@ function aufPassung(sp, slot) {
       let bestPunkte = -99, bestD = 9;
       feld.forEach(({ p, i }) => {
         const d = Math.abs((POS_ORDER[p] ?? 1) - POS_ORDER[slot.rolle]);
-        const punkte = (d === 0 ? 10 : d === 1 ? 4 : 0) - (i ? (d === 0 ? 3 : 1) : 0); // 2. Position etwas weniger wert
+        const punkte = punkteFuerAbstand(d) - (i ? (d === 0 ? 3 : 1) : 0); // 2. Position etwas weniger wert
         if (punkte > bestPunkte) { bestPunkte = punkte; bestD = d; }
       });
       score += bestPunkte;
-      if (bestD !== 0) posOk = false;
+      if (bestD > 0.5) posOk = false;   // „Mittelfeld“ allgemein passt auf defensiv und offensiv
     }
     const f = sp.starkerFuss;
     if (f === 'Beidfüßig') score += 2;
@@ -3496,7 +3445,7 @@ function aufstellungR() {
     + '</select></label>'
     + '<span style="font-size:.75rem;color:var(--mut);font-weight:700">' + belegt + ' / 7 besetzt</span></div>'
     + pitch
-    + '<div style="font-size:.6875rem;color:var(--mut);margin-top:.375rem">⚠ = Position oder starker Fuß passt nicht zum Platz (AB = Abwehr, MF = Mittelfeld, ST = Sturm · L/R/B = starker Fuß)</div>'
+    + '<div style="font-size:.6875rem;color:var(--mut);margin-top:.375rem">⚠ = Position oder starker Fuß passt nicht zum Platz (AB = Abwehr, DM = defensives, MF = allgemeines, OM = offensives Mittelfeld, ST = Sturm · L/R/B = starker Fuß)</div>'
     + '<div class="tr-ber" style="margin-top:.875rem"><span class="ber-ti" style="display:block;margin-bottom:.375rem">🪑 Bank (' + bank.length + ')</span>'
     + '<div style="font-size:.7rem;color:var(--mut);margin-bottom:.375rem">Namen antippen = bester freier Platz</div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:.375rem">'
@@ -5160,7 +5109,7 @@ function scorerR() {
 /* ===== SPIELNOTEN (Schulnoten 1–6 je Spiel, mit gespielter Position) ===== */
 
 const NOTEN = [1, 2, 3, 4, 5, 6];
-const POS_FARBE = { Torwart: '#8b5cf6', Abwehr: '#2563EB', Mittelfeld: '#10B981', Sturm: '#F59E0B' };
+const POS_FARBE = { Torwart: '#8b5cf6', Abwehr: '#2563EB', 'Defensives Mittelfeld': '#0D9488', Mittelfeld: '#10B981', 'Offensives Mittelfeld': '#84CC16', Sturm: '#F59E0B' };
 
 function notenFormat(x) { return (Math.round(x * 10) / 10).toFixed(1).replace('.', ','); }
 function notenFarbe(x) { return x <= 2.5 ? '#10B981' : x <= 4 ? '#d97706' : '#EF4444'; }
