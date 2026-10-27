@@ -859,7 +859,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="db-hint"></div>
       <div id="db-spiele"></div>
       <div id="db-tabelle"></div>
-      <div id="db-stat-chips"></div>
       <div id="db-torschuetzen"></div>
       <div id="db-scorer"></div>
       <div id="db-noten"></div>
@@ -972,8 +971,12 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 /* ===== KONSTANTEN ===== */
 
-const APP_VERSION = '27.10.2026';
 const SK = 'trainingsplaner_v1';
+// Co-Trainer-Integration: Team-A-Liste wird an die Cloudflare-API gesendet.
+// Kein geheimes Passwort im öffentlichen Frontend hinterlegen.
+const CO_TRAINER_LINEUP_API = 'https://ebeco-lineup-api.varga30-10-99c.workers.dev/lineup';
+const CO_TRAINER_TYPEBOT_URL = 'https://typebot.co/ebecotrainer';
+
 const DFBNET_URL = 'https://www.dfbnet.org/egmweb/mod_egm/webflow.do?event=VEREINSMELDER_NEW&dmg_menu=10104'; // Ergebnis melden
 const BFV_TABELLE_URL = 'https://www.bfv.de/ergebnisse/wettbewerb/-/031I9A7JJK000007VS5489BUVVKNMR0J-G/tabellen'; // U10 (E-J) Ost Rosa
 const EIGENER_VEREIN = 'Ebersberg'; // Standard: diese Zeile wird in der Tabelle hervorgehoben
@@ -1025,8 +1028,14 @@ const spielTimer = {
 /* ===== PERSISTENZ ===== */
 
 function speichern() {
-  try { localStorage.setItem(SK, JSON.stringify(S)); }
-  catch(_) { toastZ('Fehler beim Speichern!','err'); }
+  try {
+    localStorage.setItem(SK, JSON.stringify(S));
+    return true;
+  } catch (err) {
+    const voll = err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    toastZ(voll ? 'Speicher voll – bitte Daten sofort exportieren!' : 'Fehler beim Speichern. Bitte Daten exportieren!', 'err');
+    return false;
+  }
 }
 
 function normalizeGegnerState() {
@@ -1071,19 +1080,63 @@ function laden() {
 }
 
 /* ===== JSON EXPORT ===== */
-function jsonExportieren() {
+async function jsonExportieren() {
   if (!S.einstellungen || typeof S.einstellungen !== 'object') S.einstellungen = {};
   S.einstellungen.letztesBackup = new Date().toISOString();
-  speichern();
   const datum = new Date().toISOString().slice(0, 10);
-  const dateiname = 'trainingsdaten_' + datum + '.json';
-  const blob = new Blob([JSON.stringify(S, null, 2)], { type:'application/json' });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), { href:url, download:dateiname });
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toastZ('💾 Exportiert: ' + dateiname,'ok');
-  dbR();
+  const dateiname = 'ebeapp-datensicherung-' + datum + '.json';
+  let blob;
+  try {
+    blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json;charset=utf-8' });
+  } catch (_) {
+    toastZ('Sicherung konnte nicht erstellt werden. Bitte Speicherplatz prüfen.', 'err');
+    return;
+  }
+
+  // Auf Mobilgeräten ist der native Teilen-Dialog oft zuverlässiger als ein
+  // automatischer Blob-Download (insbesondere bei iOS/Safari).
+  try {
+    const datei = new File([blob], dateiname, { type: 'application/json' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [datei] })) {
+      await navigator.share({ files: [datei], title: 'EbeApp-Datensicherung', text: 'JSON-Datensicherung der EbeApp' });
+      speichern();
+      toastZ('Datensicherung zum Teilen bereitgestellt.', 'ok');
+      dbR();
+      return;
+    }
+  } catch (err) {
+    // Abbruch im Teilen-Dialog ist kein Fehler; bei anderen Problemen folgt Download-Fallback.
+    if (err && err.name === 'AbortError') return;
+  }
+
+  let url = null;
+  try {
+    url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = dateiname;
+    a.rel = 'noopener';
+    a.style.position = 'fixed';
+    a.style.left = '-10000px';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Lange genug bestehen lassen, damit mobile Browser den Download übernehmen.
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+    speichern();
+    toastZ('Download wurde gestartet. Falls nichts erscheint, erneut tippen oder im Teilen-Menü „In Dateien sichern“ wählen.', 'ok');
+    dbR();
+  } catch (_) {
+    if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
+    // Letzter Fallback: JSON in einem Tab öffnen, damit es manuell gespeichert werden kann.
+    try {
+      const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(S, null, 2));
+      window.open(dataUrl, '_blank', 'noopener');
+      toastZ('Sicherung geöffnet. Im Browser-Menü bitte Teilen oder Speichern wählen.', 'ok');
+    } catch (__) {
+      toastZ('Download blockiert. Bitte im Browser-Menü „Teilen“ oder „In Dateien sichern“ verwenden.', 'err');
+    }
+  }
 }
 
 /* ===== JSON IMPORT ===== */
@@ -1095,16 +1148,25 @@ function jsonImportieren(datei) {
     let d;
     try {
       d = JSON.parse(e.target.result);
-      if (!d || (!Array.isArray(d.spieler) && !Array.isArray(d.trainer))) throw new Error('Unbekanntes Format');
-    } catch(_) { toastZ('Fehler: Ungültige JSON-Datei!','err'); return; }
+      if (!d || typeof d !== 'object' || Array.isArray(d)
+          || (!Array.isArray(d.spieler) && !Array.isArray(d.trainer))
+          || (d.spieler && !Array.isArray(d.spieler))
+          || (d.trainer && !Array.isArray(d.trainer))
+          || (d.dashboardSpiele && !Array.isArray(d.dashboardSpiele))) throw new Error('Unbekanntes Format');
+      // Größenlimit schützt mobile Geräte vor versehentlich ausgewählten Riesendateien.
+      if (datei.size > 15 * 1024 * 1024) throw new Error('Datei zu groß');
+    } catch(_) { toastZ('Import fehlgeschlagen: ungültige, zu große oder unpassende JSON-Datei.','err'); return; }
 
     const inhalt = (Array.isArray(d.spieler) ? d.spieler.length : 0) + ' Spieler, '
       + (Array.isArray(d.trainer) ? d.trainer.length : 0) + ' Trainer, '
       + (Array.isArray(d.dashboardSpiele) ? d.dashboardSpiele.length : 0) + ' Spiele';
-    bestaetigen('Daten importieren', 'Die Sicherung enthält ' + inhalt + '. Alle aktuellen Daten in der App werden dadurch ersetzt.', 'Importieren', () => {
+    bestaetigen('Daten importieren', 'Die Sicherung enthält ' + inhalt + '. Alle aktuellen Daten werden ersetzt. Exportiere bei Bedarf zuerst eine Sicherung der aktuellen Daten.', 'Importieren', () => {
+      // Vor dem Austausch die bisherigen Daten bestmöglich als Wiederherstellungspunkt sichern.
+      try { localStorage.setItem(SK + '_vor_import', JSON.stringify(S)); } catch (_) {}
       datenUebernehmen(d);
-      speichern(); allesR();
-      toastZ('📂 Daten erfolgreich importiert!','ok');
+      const ok = speichern();
+      allesR();
+      toastZ(ok ? '📂 Daten erfolgreich importiert!' : 'Import geladen, aber Speichern fehlgeschlagen – bitte sofort exportieren!', ok ? 'ok' : 'err');
     });
   };
   reader.readAsText(datei);
@@ -3017,7 +3079,6 @@ function mehrMenueOeffnen() {
     + eintrag('💾', 'Daten sichern (Export)', 'modalSch();jsonExportieren()')
     + eintrag('📂', 'Daten importieren', "modalSch();document.getElementById('file-import').click()")
     + '<div style="font-size:.75rem;color:var(--mut);margin:.125rem .25rem 0">Letzte Sicherung: ' + h(lbText) + '</div>'
-    + '<div style="font-size:.75rem;color:var(--mut);margin:0 .25rem">Version: ' + h(APP_VERSION) + '</div>'
     + eintrag('⚙️', 'Einstellungen', 'einstellungenOeffnen()')
     + '<button class="btn btn-prim btn-full" type="button" style="margin-top:.5rem" onclick="modalSch()">Schließen</button>'
     + '</div>';
@@ -3462,7 +3523,101 @@ function aufstellungR() {
     + '<button class="btn btn-acc btn-sm" type="button" onclick="aufstellungVorschlag()">✨ Vorschlag</button>'
     + '<button class="btn btn-out btn-sm" type="button" onclick="aufstellungAusEinsatz()">↩ Aus Einsatzplan</button>'
     + '<button class="btn btn-out btn-sm" type="button" style="color:var(--err);border-color:var(--err)" onclick="aufstellungLeeren()">🗑 Viertel leeren</button>'
+    + '</div>'
+    + '<div class="tr-ber" style="margin-top:.875rem;margin-bottom:0">'
+    + '<div class="ber-ti" style="margin-bottom:.375rem">🤖 Co-Trainer</div>'
+    + '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">Überträgt nur die eindeutigen Spieler von Team A. Bei jedem Senden wird die bisherige Co-Trainer-Liste vollständig ersetzt; Viertel, Einsatzhäufigkeit und Team B werden nicht übertragen.</p>'
+    + '<div style="display:flex;gap:.5rem;flex-wrap:wrap">'
+    + '<button class="btn btn-prim btn-sm" type="button" onclick="coTrainerTeamASenden()">📤 Team A an Co-Trainer senden</button>'
+    + '<button class="btn btn-out btn-sm" type="button" onclick="coTrainerOeffnen()">💬 Co-Trainer öffnen</button>'
+    + '</div><div id="co-trainer-status" role="status" aria-live="polite" style="font-size:.75rem;color:var(--mut);margin-top:.5rem"></div>'
     + '</div>';
+}
+
+// ===== CO-TRAINER: eine aktuelle Team-A-Liste, die bei jedem Senden ersetzt wird =====
+function coTrainerTeamASpieler() {
+  const ids = new Set();
+  const viertel = Math.max(1, Math.min(8, Number(S.spielplanung && S.spielplanung.viertel) || 4));
+  for (let q = 0; q < viertel; q++) {
+    // Nutzt dieselbe Priorität wie die Match-Anzeige: manuelle Team-A-Aufstellung, sonst Einsatzplan.
+    const daten = matchAufstellungDaten('A', q);
+    if (daten && Array.isArray(daten.row)) daten.row.filter(Boolean).forEach(id => ids.add(String(id)));
+  }
+  // Nur IDs auflösen, die tatsächlich zu einem Spieler in der EbeApp gehören.
+  const gesehen = new Set();
+  return S.spieler
+    .filter(sp => ids.has(String(sp.id)) && !gesehen.has(String(sp.id)) && (gesehen.add(String(sp.id)), true))
+    .map(sp => String(sp.name || '').trim())
+    .filter(Boolean);
+}
+
+function coTrainerStatus(text, fehler) {
+  const el = document.getElementById('co-trainer-status');
+  if (el) { el.textContent = text; el.style.color = fehler ? 'var(--err)' : 'var(--mut)'; }
+}
+
+async function coTrainerCloudflareSync(manual = false) {
+  const spieler = coTrainerTeamASpieler();
+  const statusText = manual
+    ? (spieler.length ? 'Sende ' + spieler.length + ' Spieler …' : 'Sende leere Team-A-Liste, um die alte Liste zu löschen …')
+    : 'Synchronisiere Team A …';
+  if (manual) coTrainerStatus(statusText);
+  try {
+    const response = await fetch(CO_TRAINER_LINEUP_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ players: spieler }),
+      cache: 'no-store'
+    });
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.json()).error || ''; } catch (_) {}
+      throw new Error('HTTP ' + response.status + (detail ? ' – ' + detail : ''));
+    }
+    if (manual) {
+      coTrainerStatus('✅ ' + spieler.length + ' Spieler übertragen. Die bisherige Liste wurde ersetzt.');
+      toastZ('✅ Team-A-Liste an Co-Trainer gesendet', 'ok');
+    } else {
+      coTrainerStatus('✅ Team A automatisch synchronisiert (' + spieler.length + ' Spieler).');
+    }
+    return true;
+  } catch (err) {
+    console.warn('Team-A-Sync fehlgeschlagen:', err);
+    coTrainerStatus('Synchronisierung fehlgeschlagen. Prüfe, ob der Cloudflare-Worker mit Variante A veröffentlicht ist. ' + (err && err.message ? err.message : ''), true);
+    if (manual) toastZ('Co-Trainer konnte nicht erreicht werden.', 'err');
+    return false;
+  }
+}
+
+let coTrainerSyncTimer = null;
+function coTrainerTeamAAutoSync() {
+  if (coTrainerSyncTimer) clearTimeout(coTrainerSyncTimer);
+  coTrainerSyncTimer = setTimeout(() => {
+    coTrainerSyncTimer = null;
+    coTrainerCloudflareSync(false);
+  }, 1200);
+}
+
+async function coTrainerTeamASenden() {
+  const button = Array.from(document.querySelectorAll('button')).find(b => b.getAttribute('onclick') === 'coTrainerTeamASenden()');
+  if (button) { button.disabled = true; button.textContent = '⏳ Wird gesendet …'; }
+  try {
+    await coTrainerCloudflareSync(true);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = '📤 Team A an Co-Trainer senden'; }
+  }
+}
+function coTrainerOeffnen() {
+  if (!CO_TRAINER_TYPEBOT_URL || !/^https:\/\//i.test(CO_TRAINER_TYPEBOT_URL)) {
+    coTrainerStatus('Noch nicht verbunden: Bitte CO_TRAINER_TYPEBOT_URL im EbeApp-Code mit der öffentlichen Typebot-Embed-URL befüllen.', true);
+    toastZ('Typebot-URL ist noch nicht konfiguriert.', 'err');
+    return;
+  }
+  modal = { typ: 'co-trainer', id: null, sterne: {} };
+  document.getElementById('modal-ti').textContent = '🤖 Co-Trainer';
+  document.getElementById('modal-body').innerHTML = '<iframe title="EbeApp Co-Trainer" src="' + h(CO_TRAINER_TYPEBOT_URL) + '" style="display:block;width:100%;height:min(70vh,680px);min-height:420px;border:0;border-radius:10px;background:white" allow="clipboard-write" loading="lazy"></iframe>';
+  modalFooterSichtbar(false);
+  document.getElementById('modal-ov').classList.remove('hidden');
 }
 
 // Automatischer Vorschlag für das gewählte Viertel: Position + starker Fuß, Spieler mit weniger Einsätzen bevorzugt
@@ -3498,6 +3653,7 @@ function aufstellungVorschlag() {
     A.lineup[team][q] = neu;
     speichern();
     aufstellungR();
+    if (team === 'A') coTrainerTeamAAutoSync();
     toastZ('✅ Vorschlag erstellt', 'ok');
   };
 
@@ -3551,6 +3707,7 @@ function aufstellungSlotSetzen(idx, id) {
   speichern();
   modalSch();
   aufstellungR();
+  if (A.team === 'A') coTrainerTeamAAutoSync();
 }
 
 function aufstellungBankSetzen(id) {
@@ -3569,6 +3726,7 @@ function aufstellungBankSetzen(id) {
   lineup[best.i] = id;
   speichern();
   aufstellungR();
+  if (A.team === 'A') coTrainerTeamAAutoSync();
 }
 
 // Eigene Rückfrage im App-Fenster (der Browser-confirm() wird auf manchen Handys blockiert)
@@ -3604,6 +3762,7 @@ function aufstellungAusEinsatz() {
     A.lineup[team] = src.map(r => { const row = (r || []).slice(0, 7); while (row.length < 7) row.push(null); return row; });
     speichern();
     aufstellungR();
+    if (team === 'A') coTrainerTeamAAutoSync();
     toastZ('✅ Aus Einsatzplan übernommen', 'ok');
   });
 }
@@ -3616,6 +3775,7 @@ function aufstellungLeeren() {
     A.lineup[team][q] = [];
     speichern();
     aufstellungR();
+    if (team === 'A') coTrainerTeamAAutoSync();
     toastZ('✅ Viertel geleert', 'ok');
   });
 }
@@ -3845,6 +4005,7 @@ function einsatzPlanErstellen() {
   S.spielplanung.lineupA = spAutoBerechnen(spA, S.spielplanung.gk1A, S.spielplanung.gk2A, S.spielplanung.v1A);
   S.spielplanung.lineupB = spAutoBerechnen(spB, S.spielplanung.gk1B, S.spielplanung.gk2B, S.spielplanung.v1B);
   speichern(); spielplanungR();
+  coTrainerTeamAAutoSync();
   toastZ('✅ Einsatzplan erstellt','ok');
 }
 
@@ -3852,6 +4013,7 @@ function einsatzSlotAend(team, q, slot, val) {
   const lineup = team === 'A' ? S.spielplanung.lineupA : S.spielplanung.lineupB;
   if (lineup && lineup[q]) lineup[q][slot] = val || null;
   speichern(); einsatzR();
+  if (team === 'A') coTrainerTeamAAutoSync();
 }
 
 function einsatzSettingAend(key, val) {
@@ -4965,41 +5127,6 @@ function dashboardSpielBearbeitenSpeichern() {
 
 /* ===== TORSCHÜTZEN-STATISTIK ===== */
 
-/* ===== STATISTIK-AUSWAHL (Dashboard): immer nur eine Karte zeigen ===== */
-
-const DB_STAT = [
-  { k: 'tore',      id: 'db-torschuetzen', label: '🥇 Tore' },
-  { k: 'scorer',    id: 'db-scorer',       label: '🏅 Scorer' },
-  { k: 'noten',     id: 'db-noten',        label: '📈 Noten' },
-  { k: 'einsaetze', id: 'db-einsaetze',    label: '🏃 Einsätze' }
-];
-
-function dbStatWaehlen(k) {
-  if (!S.einstellungen || typeof S.einstellungen !== 'object') S.einstellungen = {};
-  S.einstellungen.dbStat = k;
-  speichern();
-  dbStatistikR();
-}
-
-function dbStatistikR() {
-  const chips = document.getElementById('db-stat-chips');
-  if (!chips) return;
-  const hatInhalt = x => { const el = document.getElementById(x.id); return !!(el && el.innerHTML.trim()); };
-  const da = DB_STAT.filter(hatInhalt);
-  let aktiv = S.einstellungen && S.einstellungen.dbStat;
-  if (!da.some(x => x.k === aktiv)) aktiv = da.length ? da[0].k : null;
-  DB_STAT.forEach(x => {
-    const el = document.getElementById(x.id);
-    if (el) el.style.display = (da.length <= 1 || x.k === aktiv) ? '' : 'none';
-  });
-  chips.innerHTML = da.length > 1
-    ? '<div style="font-size:.8125rem;font-weight:700;color:var(--mut);margin-bottom:.375rem">📊 Statistik</div>'
-      + '<div class="timer-quarter-row" style="grid-template-columns:repeat(' + da.length + ',minmax(0,1fr));margin-bottom:.75rem">'
-      + da.map(x => '<button class="timer-quarter-btn' + (x.k === aktiv ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="dbStatWaehlen(\'' + x.k + '\')">' + x.label + '</button>').join('')
-      + '</div>'
-    : '';
-}
-
 let dbAlleTorschuetzen = false;
 
 function dbTorschuetzenUmschalten() {
@@ -5013,7 +5140,7 @@ function torschuetzenR() {
   if (!el) return;
 
   const spiele = Array.isArray(S.dashboardSpiele) ? S.dashboardSpiele : [];
-  if (!spiele.length) { el.innerHTML = ''; scorerR(); notenR(); einsatzStatistikR(); dbStatistikR(); return; }
+  if (!spiele.length) { el.innerHTML = ''; scorerR(); notenR(); einsatzStatistikR(); return; }
 
   const stat = {};
   let toreGesamt = 0, ohneSchuetze = 0;
@@ -5081,7 +5208,6 @@ function torschuetzenR() {
   scorerR();
   notenR();
   einsatzStatistikR();
-  dbStatistikR();
 }
 
 let dbAlleScorer = false;
@@ -5457,37 +5583,11 @@ function initEvents() {
   });
 }
 
-/* ===== UPDATE-HINWEIS ===== */
-
-function updateHinweisZeigen(neu) {
-  if (document.getElementById('update-bar')) return;
-  const bar = document.createElement('div');
-  bar.id = 'update-bar';
-  bar.style.cssText = 'position:fixed;left:0;right:0;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 8px);z-index:150;display:flex;justify-content:center;pointer-events:none';
-  bar.innerHTML = '<button type="button" class="btn btn-acc" style="pointer-events:auto;box-shadow:var(--shl)" onclick="location.reload()">🔄 Neue Version ' + h(neu) + ' – tippen zum Laden</button>';
-  document.body.appendChild(bar);
-}
-
-// Fragt (höchstens alle 30 Minuten, nur mit Internet) die aktuelle Version der Seite ab
-async function updatePruefen(erzwingen) {
-  if (!location.protocol.startsWith('http') || navigator.onLine === false) return;
-  try {
-    const letzte = Number(localStorage.getItem('ebe_update_pruefung') || 0);
-    if (!erzwingen && Date.now() - letzte < 30 * 60 * 1000) return;
-    localStorage.setItem('ebe_update_pruefung', String(Date.now()));
-    const res = await fetch(location.pathname, { cache: 'no-store' });
-    if (!res.ok) return;
-    const m = (await res.text()).match(/const APP_VERSION = '([^']+)'/);
-    if (m && m[1] !== APP_VERSION) updateHinweisZeigen(m[1]);
-  } catch (_) {}
-}
-
 /* ===== OFFLINE-MODUS (Service Worker) ===== */
 // Funktioniert nur über https (z. B. GitHub Pages); beim Öffnen als lokale Datei wird er übersprungen
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => {});
-    setTimeout(updatePruefen, 3000);
   });
 }
 // Browser bitten, die Daten nicht von selbst zu löschen
