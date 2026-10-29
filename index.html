@@ -1086,6 +1086,7 @@ function datenUebernehmen(d) {
   S.aufstellung    = Object.assign({team:'A',q:0,formation:'2-3-1',lineup:{A:[],B:[]}}, d.aufstellung||{});
   if (!S.aufstellung.lineup || typeof S.aufstellung.lineup !== 'object') S.aufstellung.lineup = {A:[],B:[]};
   normalizeGegnerState();
+  anwesenheitAusLetztemTraining();
   delete S.gegner.tws; delete S.gegner.tw;
 }
 
@@ -2199,6 +2200,15 @@ function datumAnzeige(iso) {
   return isNaN(d.getTime()) ? iso : d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+// Anwesenheit (und damit die Trainingsteams) kommt immer aus dem zuletzt gespeicherten Training
+function anwesenheitAusLetztemTraining() {
+  const einheiten = (S.training && Array.isArray(S.training.einheiten)) ? S.training.einheiten : [];
+  if (!einheiten.length) return;
+  const letzte = einheiten.reduce((a, b) => String(b.datum) > String(a.datum) ? b : a);
+  const ids = new Set(Array.isArray(letzte.spieler) ? letzte.spieler : []);
+  S.spieler.forEach(sp => { sp.anwesend = ids.has(sp.id); });
+}
+
 function trainingEinheiten() {
   if (!S.training || !Array.isArray(S.training.einheiten)) S.training = { einheiten: [] };
   return S.training.einheiten;
@@ -2382,9 +2392,12 @@ function trainingBearbeitenSpeichern() {
     einheiten.push({ id: genId(), datum, spieler: ids });
   }
   einheiten.sort((a, b) => b.datum.localeCompare(a.datum));
+  anwesenheitAusLetztemTraining();
   speichern();
   modalSch();
   trainingAnwesenheitR();
+  trainingR();
+  dbR();
   toastZ('✅ Training gespeichert', 'ok');
 }
 
@@ -2393,8 +2406,11 @@ function trainingLoeschen(id) {
   if (!e) return;
   bestaetigen('Training löschen', 'Das Training vom ' + datumAnzeige(e.datum) + ' wirklich löschen?', 'Löschen', () => {
     S.training.einheiten = S.training.einheiten.filter(x => x.id !== id);
+    anwesenheitAusLetztemTraining();
     speichern();
     trainingAnwesenheitR();
+    trainingR();
+    dbR();
   });
 }
 
