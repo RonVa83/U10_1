@@ -896,7 +896,8 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div class="sek-h"><h2>🏃 Training</h2></div>
       <div id="training-sub-chips"></div>
       <div id="training-anwesenheit-section">
-        <div id="training-content"></div>
+        <div id="training-beteiligung"></div>
+        <div id="training-content" style="margin-top:1rem"></div>
       </div>
       <div id="training-plan-section" style="display:none">
         <div class="sek-h"><h2>📋 Trainingsplan</h2></div>
@@ -2254,7 +2255,7 @@ function trainingUmschalten(was) {
 }
 
 function trainingAnwesenheitR() {
-  const el = document.getElementById('stat-training');
+  const el = document.getElementById('training-beteiligung');
   if (!el) return;
   const einheiten = trainingEinheiten();
   const aSp = S.spieler.filter(s => s.anwesend).length;
@@ -2290,6 +2291,16 @@ function trainingAnwesenheitR() {
       + (N > LIMIT ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-bottom:.625rem" onclick="trainingUmschalten(\'liste\')">' + (trainingAlleListe ? 'Weniger anzeigen' : 'Alle ' + N + ' Trainings anzeigen') + '</button>' : '')
     : '<p style="color:var(--mut);font-size:.8125rem;margin-bottom:.625rem">Noch kein Training gespeichert.</p>';
 
+  el.innerHTML = html;
+  trainingStatistikR();
+}
+
+// Quoten-Tabelle (Beteiligung pro Spieler) im Statistik-Reiter
+function trainingStatistikR() {
+  const el = document.getElementById('stat-training');
+  if (!el) return;
+  const { N, zeilen } = trainingStatistik();
+  let html = '';
   // Statistik pro Spieler
   if (N && zeilen.length) {
     const TL = 5;
@@ -4462,7 +4473,7 @@ function tabW(id) {
     matchAufstellungR();
     tonButtonR();
   }
-  if (id === 'training') { trainingR(); planR(); trainingUnterpunktWaehlen(trainingUnterpunkt); }
+  if (id === 'training') { trainingR(); planR(); trainingAnwesenheitR(); trainingUnterpunktWaehlen(trainingUnterpunkt); }
   if (id === 'spieler') { spielerR(document.getElementById('spieler-suche')?.value); trainerR(); }
   if (id === 'dashboard') dbR();
   if (id === 'statistik') { dbR(); trainingAnwesenheitR(); dbStatistikR(); }
