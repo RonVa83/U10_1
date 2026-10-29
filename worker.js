@@ -2,8 +2,9 @@
 // Variant A: no client-side secret. Origin allowlist + basic per-IP rate limit.
 // Important: Origin checks are not authentication; non-browser clients can spoof Origin.
 const ALLOWED_ORIGIN = "https://ronva83.github.io";
-const RATE_LIMIT_PER_HOUR = 20;
+const RATE_LIMIT_PER_HOUR = 60;      // die App sendet nur noch bei geänderter Spielerliste
 const MAX_PLAYERS = 50;
+const MAX_BODY_BYTES = 8 * 1024;     // eine Spielerliste ist winzig; alles Größere wird abgelehnt
 
 function corsHeaders(origin) {
   return {
@@ -32,6 +33,12 @@ export default {
     }
     if (url.pathname !== "/lineup") return json({ error: "Not found" }, 404, origin);
     if (request.method === "GET") {
+      // Optionaler Lese-Schlüssel: Ist in Cloudflare die Variable READ_KEY gesetzt, darf nur lesen, wer ihn kennt
+      // (z. B. Typebot mit ?key=… in der Abfrage). Ohne READ_KEY bleibt die Liste öffentlich lesbar.
+      if (env.READ_KEY) {
+        const key = url.searchParams.get("key") || request.headers.get("X-Read-Key") || "";
+        if (key !== env.READ_KEY) return json({ error: "Unauthorized" }, 401, origin);
+      }
       const saved = await env.LINEUP_KV.get("current-lineup");
       return json(saved ? JSON.parse(saved) : { players: [] }, 200, origin);
     }
@@ -46,9 +53,13 @@ export default {
     if (used >= RATE_LIMIT_PER_HOUR) return json({ error: "Rate limit exceeded" }, 429, origin);
     await env.LINEUP_KV.put(rateKey, String(used + 1), { expirationTtl: 3600 });
 
+    if (Number(request.headers.get("Content-Length") || 0) > MAX_BODY_BYTES) return json({ error: "Payload too large" }, 413, origin);
     let body;
-    try { body = await request.json(); }
-    catch { return json({ error: "Invalid JSON" }, 400, origin); }
+    try {
+      const text = await request.text();
+      if (text.length > MAX_BODY_BYTES) return json({ error: "Payload too large" }, 413, origin);
+      body = JSON.parse(text);
+    } catch { return json({ error: "Invalid JSON" }, 400, origin); }
     if (!Array.isArray(body.players)) return json({ error: "players must be an array" }, 400, origin);
     const players = [...new Set(body.players
       .filter(name => typeof name === "string")

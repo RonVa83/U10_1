@@ -1,14 +1,17 @@
 /* EbeApp Service Worker – robustes Offline-Verhalten und kontrollierte Updates. */
 const CACHE_PREFIX = 'ebeapp-static-';
-const CACHE = `${CACHE_PREFIX}v2`;
+const CACHE = `${CACHE_PREFIX}v3`;
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE)
-      .then(cache => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    // Die App selbst ist Pflicht; fehlt ein Symbol oder das Manifest, soll der Offline-Modus trotzdem starten.
+    await cache.add(new Request('./index.html', { cache: 'reload' }));
+    await Promise.all(APP_SHELL.filter(p => p !== './index.html')
+      .map(p => cache.add(new Request(p, { cache: 'reload' })).catch(() => {})));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', event => {
@@ -33,7 +36,7 @@ self.addEventListener('fetch', event => {
         timeoutId = setTimeout(() => reject(new Error('network-timeout')), 3500);
       });
       try {
-        const response = await Promise.race([fetch(request), timeout]);
+        const response = await Promise.race([fetch(request.url, { cache: 'no-cache', credentials: 'same-origin' }), timeout]);
         clearTimeout(timeoutId);
         if (response && response.ok) cache.put('./index.html', response.clone()).catch(() => {});
         return response;
@@ -50,7 +53,7 @@ self.addEventListener('fetch', event => {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       try {
-        const response = await fetch(request);
+        const response = await fetch(request, { cache: 'no-cache' });
         if (response && response.ok) cache.put(request, response.clone()).catch(() => {});
         return response;
       } catch (_) {
