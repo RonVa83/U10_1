@@ -845,6 +845,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
     <button class="nav-tab" data-tab="trainingsplan">📋 Trainingsplan</button>
     <button class="nav-tab" data-tab="spielplanung">⚽ Spielplanung</button>
     <button class="nav-tab" data-tab="gegner">🔍 Gegner</button>
+    <button class="nav-tab" data-tab="statistik">📈 Statistik</button>
   </nav>
 
   <!-- Haupt-Inhaltsbereich -->
@@ -855,9 +856,14 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div class="sek-h">
         <h2>📊 Dashboard</h2>
       </div>
-      <div id="db-stats"></div>
       <div id="db-hint"></div>
       <div id="db-spiele"></div>
+    </section>
+
+    <!-- Statistik: alle Kennzahlen und Tabellen gesammelt an einem Ort -->
+    <section id="tab-statistik" class="tab-s">
+      <div class="sek-h"><h2>📈 Statistik</h2></div>
+      <div id="db-stats"></div>
       <div id="db-tabelle"></div>
       <div id="db-stat-chips"></div>
       <div id="db-torschuetzen"></div>
@@ -3097,6 +3103,7 @@ function mehrMenueOeffnen() {
     + titel('Seiten')
     + eintrag('⚽', 'Training', "mehrGehe('training')")
     + eintrag('📋', 'Trainingsplan', "mehrGehe('trainingsplan')")
+    + eintrag('📈', 'Statistik', "mehrGehe('statistik')")
     + eigeneLinks
     + titel('Werkzeuge')
     + '<a class="btn btn-out btn-full" style="' + stil + '" href="' + h(dfbnetUrl()) + '" target="_blank" rel="noopener" onclick="modalSch()"><span style="font-size:1.25rem">📤</span>Ergebnis melden (DFBnet)</a>'
@@ -4318,7 +4325,7 @@ function tabW(id) {
   document.querySelectorAll('.tab-s').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   const mehrBtn = document.getElementById('nav-mehr');
-  if (mehrBtn) mehrBtn.classList.toggle('active', ['training', 'trainingsplan'].includes(id));
+  if (mehrBtn) mehrBtn.classList.toggle('active', ['training', 'trainingsplan', 'statistik'].includes(id));
 
   const sek = document.getElementById('tab-' + id);
   if (sek) sek.classList.add('active');
@@ -4332,7 +4339,7 @@ function tabW(id) {
   if (id === 'trainingsplan') planR();
   if (id === 'spielplanung') spielplanungR();
   if (id === 'gegner') gegnerR();
-  if (id === 'dashboard') dbR();
+  if (id === 'dashboard' || id === 'statistik') dbR();
 }
 
 
