@@ -5863,6 +5863,8 @@ function spielplanParsen(text) {
   const t = String(text || '').replace(/[\u00a0\t]+/g, ' ');
   const verein = String(vereinName() || '').trim().toLowerCase();
   const namen = [...new Set(BEKANNTE_TEAMS.concat(((S.tabelle && S.tabelle.zeilen) || []).map(z => z.name)))];
+  const esc = w => w.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&');
+  const teilRe = txt => new RegExp(txt.trim().split(/\s+/).map(esc).join('\\s*'), 'i');
   const rx = namen.map(n => {
     const kern = n.replace(/\s+U\d+.*$/i, '').trim();
     if (!kern) return null;
@@ -5881,22 +5883,41 @@ function spielplanParsen(text) {
     const rec = t.slice(hit.end, k + 1 < treffer.length ? treffer[k + 1].i : t.length);
     const y = hit.y < 100 ? 2000 + hit.y : hit.y;
     if (hit.mo < 1 || hit.mo > 12 || hit.d < 1 || hit.d > 31) return;
-    const gef = [];
-    rx.forEach(x => { const mm = x.re.exec(rec); if (mm) gef.push({ name: x.name, i: mm.index, end: mm.index + mm[0].length }); });
-    const f = gef.filter(a => !gef.some(b => b !== a && b.i <= a.i && b.end >= a.end && (b.end - b.i) > (a.end - a.i)));
-    f.sort((a, b) => a.i - b.i);
-    if (f.length < 2) { if (verein && rec.toLowerCase().includes(verein)) uebersprungen++; return; }
-    const heim = f[0].name, ausw = f[1].name;
-    const eigenHeim = !verein || heim.toLowerCase().includes(verein);
-    const eigenAusw = !verein || ausw.toLowerCase().includes(verein);
-    if (!eigenHeim && !eigenAusw) return;
+    if (/SPIELFREI/i.test(rec)) return;   // spielfreie Woche, kein Spiel
     const tm = /(^|[^\d])(\d{1,2}):(\d{2})(?!\d)/.exec(rec);
     const tmIdx = tm ? tm.index + tm[1].length : -1;
     const zeit = tm ? String(tm[2]).padStart(2, '0') + ':' + tm[3] : '';
-    const tail = rec.slice(f[1].end);
-    const sm = /(\d{1,2})\s*:\s*(\d{1,2})(?!\d)/.exec(tail);
-    let ergebnis = null;
-    if (sm && f[1].end + sm.index !== tmIdx) ergebnis = { heim: +sm[1], auswaerts: +sm[2] };
+    const scoreRe = /(\d{1,2})\s*:\s*(\d{1,2})(?!\d)/;
+    let heim, ausw, sm = null;
+
+    // Lange Namen wie „(SG) Glonn/ Bruck/ Moosach/ Oberpframmern“ sind im PDF auf mehrere Zeilen verteilt
+    const wr = namen.filter(n => n.includes('/')).map(n => { const k = n.lastIndexOf('/') + 1; return { name: n, p1: n.slice(0, k), p2: n.slice(k) }; })
+      .find(w => { const voll = rx.find(x => x.name === w.name); return voll && !voll.re.test(rec) && teilRe(w.p1).test(rec) && teilRe(w.p2).test(rec); });
+    if (wr) {
+      const rest = rec.replace(teilRe(wr.p1), '  ').replace(teilRe(wr.p2), '  ');
+      const andere = rx.filter(x => x.name !== wr.name).map(x => ({ x, m: x.re.exec(rest) })).filter(o => o.m).sort((a, b) => a.m.index - b.m.index)[0];
+      if (!andere) { if (verein && rec.toLowerCase().includes(verein)) uebersprungen++; return; }
+      // Steht der Bindestrich direkt hinter dem anderen Team, ist die SG Gast; steht er allein in einer Zeile, ist die SG Heim
+      const zeile = rest.slice(andere.m.index + andere.m[0].length).split('\n')[0].replace(/^\s*U\d+(\s+\d)?/i, '');
+      const sgGast = /^\s*-/.test(zeile);
+      heim = sgGast ? andere.x.name : wr.name;
+      ausw = sgGast ? wr.name : andere.x.name;
+      sm = scoreRe.exec(zeit ? rest.replace(tm[2] + ':' + tm[3], ' ') : rest);
+    } else {
+      const gef = [];
+      rx.forEach(x => { const mm = x.re.exec(rec); if (mm) gef.push({ name: x.name, i: mm.index, end: mm.index + mm[0].length }); });
+      const f = gef.filter(a => !gef.some(b => b !== a && b.i <= a.i && b.end >= a.end && (b.end - b.i) > (a.end - a.i)));
+      f.sort((a, b) => a.i - b.i);
+      if (f.length < 2) { if (verein && rec.toLowerCase().includes(verein)) uebersprungen++; return; }
+      heim = f[0].name; ausw = f[1].name;
+      const tail = rec.slice(f[1].end);
+      const s1 = scoreRe.exec(tail);
+      if (s1 && f[1].end + s1.index !== tmIdx) sm = s1;
+    }
+    const eigenHeim = !verein || heim.toLowerCase().includes(verein);
+    const eigenAusw = !verein || ausw.toLowerCase().includes(verein);
+    if (!eigenHeim && !eigenAusw) return;
+    let ergebnis = sm ? { heim: +sm[1], auswaerts: +sm[2] } : null;
     const iso = y + '-' + String(hit.mo).padStart(2, '0') + '-' + String(hit.d).padStart(2, '0');
     if (spiele.some(s => s.datum === iso && s.heim === heim && s.auswaerts === ausw)) return;
     const g = { datum: iso, zeit, heim, auswaerts: ausw, unsereSeite: eigenHeim ? 'heim' : 'auswaerts' };
