@@ -842,6 +842,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   <nav id="top-nav">
     <button class="nav-tab active" data-tab="dashboard">📊 Dashboard</button>
     <button class="nav-tab" data-tab="spiel">⚽ Spiel</button>
+    <button class="nav-tab" data-tab="match">⏱️ Match</button>
     <button class="nav-tab" data-tab="training">🏃 Training</button>
     <button class="nav-tab" data-tab="statistik">📈 Statistiken</button>
     <button class="nav-tab" id="top-nav-mehr" type="button" onclick="mehrMenueOeffnen()">☰ Mehr</button>
@@ -859,45 +860,58 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="db-tabelle"></div>
     </section>
 
-    <!-- Spiel: alle spielbezogenen Werkzeuge in einem Hauptreiter -->
+    <!-- Spiel: Anwesenheit, Spielplanung und Gegner-Analyse -->
     <section id="tab-spiel" class="tab-s">
       <div class="sek-h"><h2>⚽ Spiel</h2></div>
+      <div id="spiel-sub-chips"></div>
       <div id="spiel-anwesenheit" class="spiel-subsection"></div>
-      <div id="tab-timer" class="spiel-subsection">
-      <div class="sek-h">
-        <h2>⏱️ Match</h2>
-        <div class="sek-h-act"><button id="ton-btn" class="btn btn-out btn-sm" type="button" onclick="tonUmschalten()" aria-label="Signalton">🔔</button></div>
+      <div id="spiel-vergangen" class="spiel-subsection" style="display:none">
+        <div class="sek-h"><h2>🗂️ Vergangene Spiele</h2></div>
+        <div id="db-spiele"></div>
       </div>
-      <div id="timer-aufstellung"></div>
-      <div id="timer-panel"></div>
-    </div>
       <div id="tab-spielplanung" class="spiel-subsection">
-      <div class="sek-h"><h2>⚽ Spielplanung</h2></div>
-      <div id="spielplanung-content"></div>
-    </div>
+        <div class="sek-h"><h2>⚽ Spielplanung</h2></div>
+        <div id="spielplanung-content"></div>
+      </div>
       <div id="tab-gegner" class="spiel-subsection">
-      <div class="sek-h"><h2>🔍 Gegner-Analyse</h2></div>
-      <div id="gegner-content"></div>
-    </div>
+        <div class="sek-h"><h2>🔍 Gegner-Analyse</h2></div>
+        <div id="gegner-content"></div>
+      </div>
+    </section>
+
+    <!-- Match ist ein eigener Hauptreiter, unabhängig vom Bereich Spiel -->
+    <section id="tab-match" class="tab-s">
+      <div id="tab-timer">
+        <div class="sek-h">
+          <h2>⏱️ Match</h2>
+          <div class="sek-h-act"><button id="ton-btn" class="btn btn-out btn-sm" type="button" onclick="tonUmschalten()" aria-label="Signalton">🔔</button></div>
+        </div>
+        <div id="timer-aufstellung"></div>
+        <div id="timer-panel"></div>
+      </div>
     </section>
 
     <!-- Training: Anwesenheit, Trainingseinheiten und Trainingsplan -->
     <section id="tab-training" class="tab-s">
-      <div class="sek-h"><h2>⚽ Training</h2></div>
-      <div id="training-content"></div>
-      <div id="stat-training" style="margin-top:1rem"></div>
-      <div class="sek-h" style="margin-top:1.25rem"><h2>📋 Trainingsplan</h2></div>
-      <div id="plan-content"></div>
+      <div class="sek-h"><h2>🏃 Training</h2></div>
+      <div id="training-sub-chips"></div>
+      <div id="training-anwesenheit-section">
+        <div id="training-content"></div>
+      </div>
+      <div id="training-plan-section" style="display:none">
+        <div class="sek-h"><h2>📋 Trainingsplan</h2></div>
+        <div id="plan-content"></div>
+      </div>
     </section>
 
     <section id="tab-statistik" class="tab-s">
       <div class="sek-h"><h2>📈 Statistik</h2></div>
-      <div id="db-spiele"></div>
       <div id="db-stat-chips"></div>
       <div id="db-torschuetzen"></div>
       <div id="db-scorer"></div>
       <div id="db-noten"></div>
       <div id="db-einsaetze"></div>
+      <div id="stat-training" style="display:none;margin-top:1rem"></div>
     </section>
 
     <section id="tab-spieler" class="tab-s">
@@ -927,6 +941,9 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
     </button>
     <button class="nav-tab" data-tab="spiel" aria-label="Spiel">
       <span class="nav-icon">⚽</span><span class="nav-label">Spiel</span>
+    </button>
+    <button class="nav-tab" data-tab="match" aria-label="Match">
+      <span class="nav-icon">⏱️</span><span class="nav-label">Match</span>
     </button>
     <button class="nav-tab" data-tab="training" aria-label="Training">
       <span class="nav-icon">🏃</span><span class="nav-label">Training</span>
@@ -2167,7 +2184,6 @@ function trainingR() {
     `;
 
   teamsR(document.getElementById('teams-ziel'));
-  trainingAnwesenheitR();
 }
 
 /* ===== TRAININGSANWESENHEIT ===== */
@@ -2293,6 +2309,7 @@ function trainingAnwesenheitR() {
       + (zeilen.length > TL ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-top:.5rem" onclick="trainingUmschalten(\'tabelle\')">' + (trainingAlleTabelle ? 'Weniger anzeigen' : 'Alle ' + zeilen.length + ' anzeigen') + '</button>' : '');
   }
   el.innerHTML = html;
+  dbStatistikR();
 }
 
 function trainingProfilHtml(sp) {
@@ -4394,6 +4411,33 @@ function formSpeichern() {
 /* ===== NAVIGATION ===== */
 
 let aktiverTab = 'dashboard';
+let spielUnterpunkt = 'anwesenheit';
+let trainingUnterpunkt = 'anwesenheit';
+
+function spielUnterpunktWaehlen(k) {
+  spielUnterpunkt = k;
+  const bereiche = {
+    anwesenheit: document.getElementById('spiel-anwesenheit'),
+    vergangen: document.getElementById('spiel-vergangen'),
+    planung: document.getElementById('tab-spielplanung'),
+    gegner: document.getElementById('tab-gegner')
+  };
+  Object.entries(bereiche).forEach(([key, el]) => { if (el) el.style.display = key === k ? '' : 'none'; });
+  const nav = document.getElementById('spiel-sub-chips');
+  if (nav) nav.innerHTML = '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:.75rem">'
+    + [{k:'anwesenheit',l:'👥 Anwesenheit'},{k:'planung',l:'📋 Spielplanung'},{k:'gegner',l:'🔍 Gegner-Analyse'},{k:'vergangen',l:'🗂️ Vergangene Spiele'}].map(x => '<button class="timer-quarter-btn' + (x.k === k ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="spielUnterpunktWaehlen(\'' + x.k + '\')">' + x.l + '</button>').join('') + '</div>';
+}
+
+function trainingUnterpunktWaehlen(k) {
+  trainingUnterpunkt = k;
+  const anwesenheit = document.getElementById('training-anwesenheit-section');
+  const plan = document.getElementById('training-plan-section');
+  if (anwesenheit) anwesenheit.style.display = k === 'anwesenheit' ? '' : 'none';
+  if (plan) plan.style.display = k === 'plan' ? '' : 'none';
+  const nav = document.getElementById('training-sub-chips');
+  if (nav) nav.innerHTML = '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:.75rem">'
+    + [{k:'anwesenheit',l:'👥 Trainingsbeteiligung'},{k:'plan',l:'📋 Trainingsplan'}].map(x => '<button class="timer-quarter-btn' + (x.k === k ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="trainingUnterpunktWaehlen(\'' + x.k + '\')">' + x.l + '</button>').join('') + '</div>';
+}
 
 function tabW(id) {
   aktiverTab = id;
@@ -4409,15 +4453,19 @@ function tabW(id) {
 
   if (id === 'spiel') {
     spielAnwesenheitR();
+    spielplanungR();
+    gegnerR();
+    spielUnterpunktWaehlen(spielUnterpunkt);
+  }
+  if (id === 'match') {
     spielTimerRender();
     matchAufstellungR();
     tonButtonR();
-    spielplanungR();
-    gegnerR();
   }
-  if (id === 'training') { trainingR(); planR(); trainingAnwesenheitR(); }
+  if (id === 'training') { trainingR(); planR(); trainingUnterpunktWaehlen(trainingUnterpunkt); }
   if (id === 'spieler') { spielerR(document.getElementById('spieler-suche')?.value); trainerR(); }
-  if (id === 'dashboard' || id === 'statistik') dbR();
+  if (id === 'dashboard') dbR();
+  if (id === 'statistik') { dbR(); trainingAnwesenheitR(); dbStatistikR(); }
 }
 
 
@@ -5283,7 +5331,8 @@ const DB_STAT = [
   { k: 'tore',      id: 'db-torschuetzen', label: '🥇 Tore' },
   { k: 'scorer',    id: 'db-scorer',       label: '🏅 Scorer' },
   { k: 'noten',     id: 'db-noten',        label: '📈 Noten' },
-  { k: 'einsaetze', id: 'db-einsaetze',    label: '🏃 Einsätze' }
+  { k: 'einsaetze', id: 'db-einsaetze',    label: '🏃 Einsätze' },
+  { k: 'training',  id: 'stat-training',   label: '📅 Trainingsbeteiligung' }
 ];
 
 function dbStatWaehlen(k) {
