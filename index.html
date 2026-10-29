@@ -3357,6 +3357,7 @@ function einstellungenSpeichern() {
   }
   if (!S.einstellungen || typeof S.einstellungen !== 'object') S.einstellungen = {};
   const e = S.einstellungen;
+  const alterVerein = String(vereinName() || '').trim().toLowerCase();
   e.linkDfbnet = dfbnet;
   e.linkTabelle = tabelle;
   e.linkSpielplan = urlNormalisieren(wert('e-spielplan')) || '';
@@ -3368,10 +3369,17 @@ function einstellungenSpeichern() {
   e.nurVornamen = !!document.getElementById('e-vornamen')?.checked;
   e.teamBAktiv = !!document.getElementById('e-team-b')?.checked;
   if (!e.teamBAktiv && S.aufstellung) S.aufstellung.team = 'A';
+  const vereinGeaendert = String(vereinName() || '').trim().toLowerCase() !== alterVerein;
+  if (vereinGeaendert) {
+    // Anderer Verein: Spielplan gehört zur alten Mannschaft und wird gelöscht
+    S.spielplan = { spiele: [], stand: '' };
+    if (S.spielstand) delete S.spielstand.planId;
+  }
   speichern();
   modalSch();
   allesR();
-  toastZ('✅ Einstellungen gespeichert', 'ok');
+  toastZ(vereinGeaendert ? '✅ Verein geändert – Spielplan gelöscht, bitte neu importieren' : '✅ Einstellungen gespeichert', 'ok');
+  if (vereinGeaendert) setTimeout(spielplanImportOeffnen, 300);
 }
 
 /* ===== AUFSTELLUNG IM MATCH-REITER + SIGNALTON ===== */
