@@ -857,6 +857,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       </div>
       <div id="db-hint"></div>
       <div id="db-stats"></div>
+      <div id="db-offen"></div>
       <div id="db-tabelle"></div>
     </section>
 
@@ -868,6 +869,10 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="spiel-vergangen" class="spiel-subsection" style="display:none">
         <div class="sek-h"><h2>🗂️ Vergangene Spiele</h2></div>
         <div id="db-spiele"></div>
+      </div>
+      <div id="spiel-plan" class="spiel-subsection" style="display:none">
+        <div class="sek-h"><h2>📆 Spielplan</h2></div>
+        <div id="spielplan-content"></div>
       </div>
       <div id="tab-spielplanung" class="spiel-subsection">
         <div class="sek-h"><h2>⚽ Spielplanung</h2></div>
@@ -985,7 +990,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 /* ===== KONSTANTEN ===== */
 
-const APP_VERSION = '29.10.2026';
+const APP_VERSION = '29.10.2026-2';
 const SK = 'trainingsplaner_v1';
 // Co-Trainer-Integration: Team-A-Liste wird an die Cloudflare-API gesendet.
 // Kein geheimes Passwort im öffentlichen Frontend hinterlegen.
@@ -1025,7 +1030,7 @@ const TEAM_KEYS  = ['I','II','III','IV','V','VI'];
 const TEAM_ICONS = { I:'🟦', II:'🟥', III:'🟩', IV:'🟨', V:'🟧', VI:'🟪' };
 
 /* ===== STATE ===== */
-let S = { spieler:[], trainer:[], schwerpunkte:[], mannschaften:['I','II','III'], einstellungen:{}, spielplanung:{viertel:4,dauerMin:15,lineupA:[],lineupB:[],gk1A:null,gk1B:null}, spielstand:{heim:0,auswaerts:0,tore:[], unsereMannschaft:'heim'}, dashboardSpiele:[], spielAnwesenheit:{einheiten:[]}, training:{einheiten:[]}, tabelle:{zeilen:[],stand:''}, aufstellung:{team:'A',q:0,formation:'2-3-1',lineup:{A:[],B:[]}}, gegner:{viertel:4,spieler:['1','2','3','5','6','7','8','9','10','11','12'],lineup:[],twPerQ:[],code:'GEG'} };
+let S = { spieler:[], trainer:[], schwerpunkte:[], mannschaften:['I','II','III'], einstellungen:{}, spielplanung:{viertel:4,dauerMin:15,lineupA:[],lineupB:[],gk1A:null,gk1B:null}, spielstand:{heim:0,auswaerts:0,tore:[], unsereMannschaft:'heim'}, dashboardSpiele:[], spielplan:{spiele:[],stand:''}, spielAnwesenheit:{einheiten:[]}, training:{einheiten:[]}, tabelle:{zeilen:[],stand:''}, aufstellung:{team:'A',q:0,formation:'2-3-1',lineup:{A:[],B:[]}}, gegner:{viertel:4,spieler:['1','2','3','5','6','7','8','9','10','11','12'],lineup:[],twPerQ:[],code:'GEG'} };
 let aktiverPlan = null;
 let modal = { typ:null, id:null, sterne:{} };
 let toastTimer = null;
@@ -1079,6 +1084,7 @@ function datenUebernehmen(d) {
   S.spielplanung   = Object.assign({viertel:4,dauerMin:15,lineupA:[],lineupB:[],gk1A:null,gk1B:null}, d.spielplanung||{});
   S.spielstand     = Object.assign({heim:0, auswaerts:0, tore:[], unsereMannschaft:'heim'}, d.spielstand||{});
   S.dashboardSpiele = Array.isArray(d.dashboardSpiele) ? d.dashboardSpiele : [];
+  S.spielplan = (d.spielplan && Array.isArray(d.spielplan.spiele)) ? d.spielplan : {spiele:[],stand:''};
   S.spielAnwesenheit = (d.spielAnwesenheit && Array.isArray(d.spielAnwesenheit.einheiten)) ? d.spielAnwesenheit : {einheiten:[]};
   S.gegner         = Object.assign({viertel:4,spieler:['1','2','3','5','6','7','8','9','10','11','12'],lineup:[],twPerQ:[],code:'GEG'}, d.gegner||{});
   S.tabelle        = (d.tabelle && Array.isArray(d.tabelle.zeilen)) ? d.tabelle : {zeilen:[],stand:''};
@@ -1884,15 +1890,24 @@ function dashboardSpieleRender() {
         : '');
 }
 
-function dashboardSpielSpeichern() {
+function dashboardSpielSpeichern(planId) {
+  // Ergebnis einem Spiel aus dem Spielplan zuordnen (undefined = noch nicht gewählt, '' = ohne Spielplan)
+  if (planId === undefined) {
+    const pid = S.spielstand && S.spielstand.planId;
+    if (pid && planSpiel(pid)) planId = pid;
+    else if (planZuordnungsListe().length) { planWahlOeffnen(); return; }
+  }
+  const pg = planId ? planSpiel(planId) : null;
+  if (pg && S.spielstand.unsereMannschaft !== pg.unsereSeite) spielstandSeiteWechseln(pg.unsereSeite);
   if (!Array.isArray(S.dashboardSpiele)) S.dashboardSpiele = [];
 
-  const key = dashboardSpielKey();
-  const gegner = gegnerCodeKurz() || 'GEG';
+  const key = pg ? 'plan:' + pg.id : dashboardSpielKey();
+  const gegner = pg ? planKurz(pg.unsereSeite === 'heim' ? pg.auswaerts : pg.heim) : (gegnerCodeKurz() || 'GEG');
   const unsereSeite = S.spielstand?.unsereMannschaft || 'heim';
   const eintrag = {
     key,
-    datum: new Date().toLocaleDateString('de-DE'),
+    datum: pg ? datumDe(pg.datum) : new Date().toLocaleDateString('de-DE'),
+    spielplanId: pg ? pg.id : undefined,
     unsereSeite,
     heimName: unsereSeite === 'heim' ? 'EBE' : gegner,
     auswaertsName: unsereSeite === 'heim' ? gegner : 'EBE',
@@ -1925,8 +1940,10 @@ function dashboardSpielSpeichern() {
     toastZ('✅ Neues Match im Dashboard gespeichert', 'ok');
   }
 
+  if (pg) S.spielstand.planId = pg.id;
   speichern();
   dbR();
+  spielplanR();
   if (idx < 0) bestaetigen('Spielnoten', 'Möchtest du den Spielern jetzt Noten für dieses Spiel geben?', 'Noten vergeben', () => notenModalOeffnen(0));
 }
 
@@ -1938,6 +1955,7 @@ function dashboardSpielLoeschen(key) {
     S.dashboardSpiele = S.dashboardSpiele.filter(spiel => spiel.key !== key);
     speichern();
     dbR();
+    spielplanR();
     toastZ('✅ Ergebnis aus Dashboard gelöscht', 'ok');
   });
 }
@@ -1964,6 +1982,7 @@ function dbR() {
   ).join('')}</div>`;
 
   dashboardSpieleRender();
+  offeneSpieleR();
   tabelleR();
   torschuetzenR();
 
@@ -3251,6 +3270,7 @@ function einstellungenOeffnen() {
     '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:1rem">Leeres Feld = Standardwert.</p>'
     + feld('e-dfbnet', 'Link „Ergebnis melden“ (DFBnet)', e.linkDfbnet, DFBNET_URL, 'url')
     + feld('e-tabelle', 'Link „Tabelle auf bfv.de“', e.linkTabelle, BFV_TABELLE_URL, 'url')
+    + feld('e-spielplan', 'Link „Spielplan (PDF)“', e.linkSpielplan, SPIELPLAN_URL, 'url')
     + feld('e-liga', 'Name der Liga (im Spielstand)', e.liga, LIGA_STANDARD)
     + feld('e-verein', 'Verein in der Tabelle hervorheben', e.verein, EIGENER_VEREIN)
     + '<div style="font-size:.6875rem;color:var(--mut);margin:-.75rem 0 1rem">Suchbegriff im Mannschaftsnamen, z. B. „Ebersberg“.</div>'
@@ -3333,6 +3353,7 @@ function einstellungenSpeichern() {
   const e = S.einstellungen;
   e.linkDfbnet = dfbnet;
   e.linkTabelle = tabelle;
+  e.linkSpielplan = urlNormalisieren(wert('e-spielplan')) || '';
   e.liga = wert('e-liga').trim();
   const verein = wert('e-verein').trim();
   if (verein) e.verein = verein; else delete e.verein;
@@ -4392,6 +4413,7 @@ function modalSch() {
 function formSpeichern() {
   if (modal.typ === 'dashboardspiel') { dashboardSpielBearbeitenSpeichern(); return; }
   if (modal.typ === 'einstellungen') { einstellungenSpeichern(); return; }
+  if (modal.typ === 'planspiel') { planSpielSpeichern(); return; }
   if (modal.typ === 'noten') { notenSpeichern(); return; }
   if (modal.typ === 'training') { trainingBearbeitenSpeichern(); return; }
   const nameEl = document.getElementById('f-name');
@@ -4435,13 +4457,14 @@ function spielUnterpunktWaehlen(k) {
   const bereiche = {
     anwesenheit: document.getElementById('spiel-anwesenheit'),
     vergangen: document.getElementById('spiel-vergangen'),
+    plan: document.getElementById('spiel-plan'),
     planung: document.getElementById('tab-spielplanung'),
     gegner: document.getElementById('tab-gegner')
   };
   Object.entries(bereiche).forEach(([key, el]) => { if (el) el.style.display = key === k ? '' : 'none'; });
   const nav = document.getElementById('spiel-sub-chips');
   if (nav) nav.innerHTML = '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:.75rem">'
-    + [{k:'anwesenheit',l:'👥 Anwesenheit'},{k:'planung',l:'📋 Spielplanung'},{k:'gegner',l:'🔍 Gegner-Analyse'},{k:'vergangen',l:'🗂️ Vergangene Spiele'}].map(x => '<button class="timer-quarter-btn' + (x.k === k ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="spielUnterpunktWaehlen(\'' + x.k + '\')">' + x.l + '</button>').join('') + '</div>';
+    + [{k:'anwesenheit',l:'👥 Anwesenheit'},{k:'plan',l:'📆 Spielplan'},{k:'planung',l:'📋 Spielplanung'},{k:'gegner',l:'🔍 Gegner-Analyse'},{k:'vergangen',l:'🗂️ Vergangene Spiele'}].map(x => '<button class="timer-quarter-btn' + (x.k === k ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="spielUnterpunktWaehlen(\'' + x.k + '\')">' + x.l + '</button>').join('') + '</div>';
 }
 
 function trainingUnterpunktWaehlen(k) {
@@ -4469,6 +4492,7 @@ function tabW(id) {
 
   if (id === 'spiel') {
     spielAnwesenheitR();
+    spielplanR();
     spielplanungR();
     gegnerR();
     spielUnterpunktWaehlen(spielUnterpunkt);
@@ -5807,9 +5831,306 @@ function einsatzStatistikR() {
     + '</div>';
 }
 
+/* ===== SPIELPLAN (Import von bfv.de, offene und abgeschlossene Spiele) ===== */
+
+const SPIELPLAN_URL = 'https://service-prod.bfv.de/rest/pdfexport/Spielplan?staffel=031I9A7JJK000007VS5489BUVVKNMR0J-G';
+function spielplanUrl() { return urlNormalisieren(einst().linkSpielplan) || SPIELPLAN_URL; }
+
+function spielplanListe() {
+  if (!S.spielplan || !Array.isArray(S.spielplan.spiele)) S.spielplan = { spiele: [], stand: '' };
+  return S.spielplan.spiele;
+}
+function planSpiel(id) { return spielplanListe().find(x => x.id === id) || null; }
+function planEintrag(id) { return (S.dashboardSpiele || []).find(x => x.spielplanId === id) || null; }
+function planNachDatum(liste) { return liste.slice().sort((a, b) => String(a.datum).localeCompare(String(b.datum)) || String(a.zeit || '').localeCompare(String(b.zeit || ''))); }
+// offen = noch nicht mit einem Match verknüpft und im Plan ohne Ergebnis
+function planOffen() { return planNachDatum(spielplanListe().filter(g => !planEintrag(g.id) && !g.ergebnis)); }
+function planZuordnungsListe() { return planNachDatum(spielplanListe().filter(g => !planEintrag(g.id))); }
+function datumDe(iso) { const d = new Date(iso + 'T12:00:00'); return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString('de-DE'); }
+function planKurz(n) {
+  let t = String(n || '').replace(/\s+U\d+.*$/i, '').replace(/^\(SG\)\s*/i, 'SG ').trim();
+  return t.length > 24 ? t.slice(0, 23) + '…' : t;
+}
+function planTeamsText(g) {
+  const l = g.unsereSeite === 'heim' ? 'EBE' : planKurz(g.heim);
+  const r = g.unsereSeite === 'heim' ? planKurz(g.auswaerts) : 'EBE';
+  return h(l) + ' - ' + h(r);
+}
+function planDatumText(g) { return datumAnzeige(g.datum) + (g.zeit ? ' · ' + g.zeit : ''); }
+
+/* --- Text aus dem Spielplan (PDF-Text) in Spiele umwandeln --- */
+function spielplanParsen(text) {
+  const t = String(text || '').replace(/[\u00a0\t]+/g, ' ');
+  const verein = String(vereinName() || '').trim().toLowerCase();
+  const namen = [...new Set(BEKANNTE_TEAMS.concat(((S.tabelle && S.tabelle.zeilen) || []).map(z => z.name)))];
+  const rx = namen.map(n => {
+    const kern = n.replace(/\s+U\d+.*$/i, '').trim();
+    if (!kern) return null;
+    const muster = kern.split(/\s+/).map(w => w.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&')).join('\\s*');
+    return { name: n, re: new RegExp(muster, 'i') };
+  }).filter(Boolean);
+
+  const dre = /(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?!\d)/g;
+  const treffer = [];
+  let m;
+  while ((m = dre.exec(t))) treffer.push({ i: m.index, end: m.index + m[0].length, d: +m[1], mo: +m[2], y: +m[3] });
+
+  const spiele = [];
+  let uebersprungen = 0;
+  treffer.forEach((hit, k) => {
+    const rec = t.slice(hit.end, k + 1 < treffer.length ? treffer[k + 1].i : t.length);
+    const y = hit.y < 100 ? 2000 + hit.y : hit.y;
+    if (hit.mo < 1 || hit.mo > 12 || hit.d < 1 || hit.d > 31) return;
+    const gef = [];
+    rx.forEach(x => { const mm = x.re.exec(rec); if (mm) gef.push({ name: x.name, i: mm.index, end: mm.index + mm[0].length }); });
+    const f = gef.filter(a => !gef.some(b => b !== a && b.i <= a.i && b.end >= a.end && (b.end - b.i) > (a.end - a.i)));
+    f.sort((a, b) => a.i - b.i);
+    if (f.length < 2) { if (verein && rec.toLowerCase().includes(verein)) uebersprungen++; return; }
+    const heim = f[0].name, ausw = f[1].name;
+    const eigenHeim = !verein || heim.toLowerCase().includes(verein);
+    const eigenAusw = !verein || ausw.toLowerCase().includes(verein);
+    if (!eigenHeim && !eigenAusw) return;
+    const tm = /(^|[^\d])(\d{1,2}):(\d{2})(?!\d)/.exec(rec);
+    const tmIdx = tm ? tm.index + tm[1].length : -1;
+    const zeit = tm ? String(tm[2]).padStart(2, '0') + ':' + tm[3] : '';
+    const tail = rec.slice(f[1].end);
+    const sm = /(\d{1,2})\s*:\s*(\d{1,2})(?!\d)/.exec(tail);
+    let ergebnis = null;
+    if (sm && f[1].end + sm.index !== tmIdx) ergebnis = { heim: +sm[1], auswaerts: +sm[2] };
+    const iso = y + '-' + String(hit.mo).padStart(2, '0') + '-' + String(hit.d).padStart(2, '0');
+    if (spiele.some(s => s.datum === iso && s.heim === heim && s.auswaerts === ausw)) return;
+    const g = { datum: iso, zeit, heim, auswaerts: ausw, unsereSeite: eigenHeim ? 'heim' : 'auswaerts' };
+    if (ergebnis) g.ergebnis = ergebnis;
+    spiele.push(g);
+  });
+  return { spiele: planNachDatum(spiele), uebersprungen };
+}
+
+/* --- PDF im Browser lesen (pdf.js, Internet nötig) --- */
+let pdfjsPromise = null;
+function pdfjsLaden() {
+  if (window.pdfjsLib) return Promise.resolve();
+  if (!pdfjsPromise) {
+    pdfjsPromise = new Promise((ok, fehler) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+      sc.onload = () => { try { pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'; ok(); } catch (e) { fehler(e); } };
+      sc.onerror = () => { pdfjsPromise = null; fehler(new Error('laden')); };
+      document.head.appendChild(sc);
+    });
+  }
+  return pdfjsPromise;
+}
+
+async function spielplanPdfLesen(datei) {
+  if (!datei || modal?.typ !== 'spielplanimport') return;
+  const pv = document.getElementById('sp-preview');
+  if (pv) pv.innerHTML = '<span style="color:var(--mut)">Lese PDF …</span>';
+  try {
+    await pdfjsLaden();
+    const pdf = await pdfjsLib.getDocument({ data: await datei.arrayBuffer() }).promise;
+    let out = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const tc = await (await pdf.getPage(p)).getTextContent();
+      const zeilen = [];
+      tc.items.forEach(it => {
+        if (!it.str || !it.str.trim()) return;
+        const y = Math.round(it.transform[5]);
+        let z = zeilen.find(l => Math.abs(l.y - y) <= 3);
+        if (!z) { z = { y, teile: [] }; zeilen.push(z); }
+        z.teile.push({ x: it.transform[4], s: it.str });
+      });
+      zeilen.sort((a, b) => b.y - a.y).forEach(z => { out += z.teile.sort((a, b) => a.x - b.x).map(x => x.s).join(' ') + '\n'; });
+    }
+    if (modal?.typ !== 'spielplanimport') return;
+    const ta = document.getElementById('sp-text');
+    if (ta) ta.value = out;
+    spielplanVorschau();
+  } catch (_) {
+    if (pv) pv.innerHTML = '<span style="color:var(--err)">PDF konnte nicht gelesen werden. Bist du online? Alternativ den Text aus dem PDF kopieren und einfügen.</span>';
+  }
+}
+
+function spielplanImportOeffnen() {
+  modal = { typ: 'spielplanimport', id: null, sterne: {}, spiele: [] };
+  document.getElementById('modal-ti').textContent = 'Spielplan importieren';
+  document.getElementById('modal-body').innerHTML =
+    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.75rem">Öffne den Spielplan als PDF, lade ihn hier hoch oder kopiere den Text und füge ihn ein. Es werden nur die Spiele deiner Mannschaft („' + h(vereinName()) + '“) übernommen.</p>'
+    + '<a class="btn btn-out btn-full" style="margin-bottom:.5rem" href="' + h(spielplanUrl()) + '" target="_blank" rel="noopener">📄 Spielplan-PDF öffnen</a>'
+    + '<input id="sp-pdf" type="file" accept="application/pdf,.pdf" style="display:none" onchange="spielplanPdfLesen(this.files[0]); this.value=\'\'">'
+    + '<button class="btn btn-prim btn-full" type="button" style="margin-bottom:.5rem" onclick="document.getElementById(\'sp-pdf\').click()">📎 PDF hochladen</button>'
+    + '<button class="btn btn-out btn-full" type="button" style="margin-bottom:.625rem" onclick="spielplanAusZwischenablage()">📋 Aus Zwischenablage einfügen</button>'
+    + '<textarea id="sp-text" rows="6" placeholder="…oder Text hier einfügen" oninput="spielplanVorschau()" style="width:100%;padding:.625rem;border:2px solid var(--brd);border-radius:var(--rs);font-size:.875rem;background:var(--surf);color:var(--txt);resize:vertical"></textarea>'
+    + '<div id="sp-preview" style="margin-top:.625rem;font-size:.8125rem;color:var(--mut)"></div>'
+    + '<div style="display:flex;gap:.75rem;margin-top:.875rem">'
+    + '<button class="btn btn-out" type="button" style="flex:1" onclick="modalSch()">Abbrechen</button>'
+    + '<button class="btn btn-prim" type="button" style="flex:1" onclick="spielplanUebernehmen()">Übernehmen</button></div>';
+  modalFooterSichtbar(false);
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+
+async function spielplanAusZwischenablage() {
+  try {
+    const t = await navigator.clipboard.readText();
+    const ta = document.getElementById('sp-text');
+    if (ta) ta.value = t;
+    spielplanVorschau();
+  } catch (_) { toastZ('Kein Zugriff auf die Zwischenablage – bitte ins Feld einfügen.', 'err'); }
+}
+
+function spielplanVorschau() {
+  if (modal?.typ !== 'spielplanimport') return;
+  const text = document.getElementById('sp-text')?.value || '';
+  const r = spielplanParsen(text);
+  modal.spiele = r.spiele;
+  const pv = document.getElementById('sp-preview');
+  if (!pv) return;
+  pv.innerHTML = r.spiele.length
+    ? '<div style="color:var(--ok);font-weight:700;margin-bottom:.25rem">✅ ' + r.spiele.length + ' Spiel' + (r.spiele.length !== 1 ? 'e' : '') + ' erkannt</div>'
+      + (r.uebersprungen ? '<div style="color:#d97706;margin-bottom:.25rem">⚠️ ' + r.uebersprungen + ' Eintrag' + (r.uebersprungen !== 1 ? 'e' : '') + ' nicht lesbar</div>' : '')
+      + '<ol style="padding-left:1.25rem;line-height:1.5">' + r.spiele.map(g => '<li>' + h(datumAnzeige(g.datum)) + (g.zeit ? ' ' + h(g.zeit) : '') + ': ' + planTeamsText(g)
+        + (g.ergebnis ? ' <span style="color:var(--mut)">(' + g.ergebnis.heim + ':' + g.ergebnis.auswaerts + ')</span>' : '') + '</li>').join('') + '</ol>'
+    : (text.trim() ? '<span style="color:var(--err)">Keine Spiele deiner Mannschaft erkannt.</span>' : '');
+}
+
+function spielplanUebernehmen() {
+  if (modal?.typ !== 'spielplanimport') return;
+  spielplanVorschau();
+  const neueSpiele = modal.spiele;
+  if (!neueSpiele.length) { toastZ('Keine Spiele erkannt!', 'err'); return; }
+  const liste = spielplanListe();
+  let neu = 0, akt = 0;
+  neueSpiele.forEach(g => {
+    const x = liste.find(y => y.datum === g.datum && y.heim === g.heim && y.auswaerts === g.auswaerts);
+    if (x) { if (g.zeit) x.zeit = g.zeit; if (g.ergebnis) x.ergebnis = g.ergebnis; akt++; }
+    else { liste.push(Object.assign({ id: genId() }, g)); neu++; }
+  });
+  S.spielplan.spiele = planNachDatum(liste);
+  S.spielplan.stand = new Date().toLocaleDateString('de-DE');
+  speichern();
+  modalSch();
+  dbR();
+  spielplanR();
+  toastZ('✅ Spielplan: ' + neu + ' neu, ' + akt + ' aktualisiert', 'ok');
+}
+
+/* --- Spiel von Hand anlegen / bearbeiten --- */
+function planSpielBearbeiten(id) {
+  const g = id ? planSpiel(id) : null;
+  modal = { typ: 'planspiel', id: id || null, sterne: {} };
+  document.getElementById('modal-ti').textContent = g ? 'Spiel bearbeiten' : 'Spiel hinzufügen';
+  const gegner = g ? (g.unsereSeite === 'heim' ? g.auswaerts : g.heim) : '';
+  const stil = 'width:100%';
+  document.getElementById('modal-body').innerHTML =
+    '<div class="fg"><label for="ps-datum">Datum</label><input id="ps-datum" type="date" value="' + h(g ? g.datum : datumIso(new Date())) + '"></div>'
+    + '<div class="fg"><label for="ps-zeit">Uhrzeit (optional)</label><input id="ps-zeit" type="time" value="' + h(g && g.zeit ? g.zeit : '') + '"></div>'
+    + '<div class="fg"><label for="ps-seite">Wir spielen</label><select id="ps-seite"><option value="heim"' + (!g || g.unsereSeite === 'heim' ? ' selected' : '') + '>Heim</option><option value="auswaerts"' + (g && g.unsereSeite === 'auswaerts' ? ' selected' : '') + '>Auswärts</option></select></div>'
+    + '<div class="fg"><label for="ps-gegner">Gegner</label><input id="ps-gegner" type="text" style="' + stil + '" value="' + h(gegner) + '" placeholder="z. B. TSV Poing U10" autocomplete="off"></div>';
+  modalFooterSichtbar(true);
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+
+function planSpielSpeichern() {
+  const datum = document.getElementById('ps-datum')?.value || '';
+  const gegner = (document.getElementById('ps-gegner')?.value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datum)) { toastZ('Bitte ein Datum wählen.', 'err'); return; }
+  if (!gegner) { document.getElementById('ps-gegner')?.classList.add('err'); toastZ('Bitte den Gegner eingeben.', 'err'); return; }
+  const seite = document.getElementById('ps-seite')?.value === 'auswaerts' ? 'auswaerts' : 'heim';
+  const zeit = document.getElementById('ps-zeit')?.value || '';
+  const v = String(vereinName() || '').trim().toLowerCase();
+  const eigen = BEKANNTE_TEAMS.find(n => v && n.toLowerCase().includes(v)) || vereinName() || 'EBE';
+  const felder = { datum, zeit, unsereSeite: seite, heim: seite === 'heim' ? eigen : gegner, auswaerts: seite === 'heim' ? gegner : eigen };
+  const liste = spielplanListe();
+  if (modal.id) { const g = planSpiel(modal.id); if (g) Object.assign(g, felder); }
+  else liste.push(Object.assign({ id: genId() }, felder));
+  S.spielplan.spiele = planNachDatum(liste);
+  speichern();
+  modalSch();
+  dbR();
+  spielplanR();
+  toastZ('✅ Spiel gespeichert', 'ok');
+}
+
+function planSpielLoeschen(id) {
+  const g = planSpiel(id);
+  if (!g) return;
+  bestaetigen('Spiel löschen', 'Das Spiel vom ' + datumAnzeige(g.datum) + ' aus dem Spielplan löschen?' + (planEintrag(id) ? ' Das gespeicherte Ergebnis bleibt erhalten.' : ''), 'Löschen', () => {
+    S.spielplan.spiele = S.spielplan.spiele.filter(x => x.id !== id);
+    speichern();
+    dbR();
+    spielplanR();
+  });
+}
+
+/* --- Ergebnis einem Spielplan-Spiel zuordnen --- */
+function planWahlOeffnen() {
+  const liste = planZuordnungsListe();
+  const heute = Date.now();
+  const kandidaten = liste.filter(g => !g.ergebnis);
+  const nah = (kandidaten.length ? kandidaten : liste).reduce((b, g) => !b || Math.abs(new Date(g.datum + 'T12:00:00') - heute) < Math.abs(new Date(b.datum + 'T12:00:00') - heute) ? g : b, null);
+  modal = { typ: 'planwahl', id: null, sterne: {} };
+  document.getElementById('modal-ti').textContent = 'Zu welchem Spiel gehört das Ergebnis?';
+  const st = S.spielstand || { heim: 0, auswaerts: 0 };
+  document.getElementById('modal-body').innerHTML =
+    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">Aktueller Spielstand: ' + st.heim + ' - ' + st.auswaerts + '</p>'
+    + '<div style="display:flex;flex-direction:column;gap:.5rem">'
+    + liste.map(g => '<button class="btn ' + (nah && g.id === nah.id ? 'btn-prim' : 'btn-out') + '" type="button" style="justify-content:flex-start;text-align:left;white-space:normal;flex-direction:column;align-items:flex-start;gap:.125rem" onclick="planWahlGewaehlt(\'' + g.id + '\')">'
+      + '<span style="font-size:.75rem;opacity:.8">' + h(planDatumText(g)) + ' · ' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + (g.ergebnis ? ' · Plan: ' + g.ergebnis.heim + ':' + g.ergebnis.auswaerts : '') + '</span>'
+      + '<span>' + planTeamsText(g) + '</span></button>').join('')
+    + '<button class="btn btn-out" type="button" onclick="planWahlGewaehlt(\'\')">Ohne Spielplan speichern</button>'
+    + '<button class="btn btn-out" type="button" onclick="modalSch()">Abbrechen</button></div>';
+  modalFooterSichtbar(false);
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+
+function planWahlGewaehlt(id) {
+  modalSch();
+  dashboardSpielSpeichern(id);
+}
+
+/* --- Anzeige: Dashboard (offene Spiele) und Spiel → Spielplan --- */
+let dbAlleOffen = false;
+function dbOffenUmschalten() { dbAlleOffen = !dbAlleOffen; offeneSpieleR(); }
+
+function offeneSpieleR() {
+  const el = document.getElementById('db-offen');
+  if (!el) return;
+  const offen = planOffen();
+  if (!offen.length) { el.innerHTML = ''; return; }
+  const LIMIT = 3;
+  el.innerHTML = '<div class="ber-ti" style="margin-bottom:.375rem">📆 Offene Spiele (' + offen.length + ')</div>'
+    + '<div class="db-match-list">' + offen.slice(0, dbAlleOffen ? offen.length : LIMIT).map(g =>
+      '<div class="db-match-row"><div class="db-match-head"><span class="db-match-side">' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + '</span>'
+      + '<span class="db-match-date">' + h(planDatumText(g)) + '</span></div>'
+      + '<div class="db-match-body"><span class="db-match-teams">' + planTeamsText(g) + '</span></div></div>').join('') + '</div>'
+    + (offen.length > LIMIT ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-bottom:.9rem" onclick="dbOffenUmschalten()">' + (dbAlleOffen ? 'Weniger anzeigen' : 'Alle ' + offen.length + ' offenen Spiele anzeigen') + '</button>' : '');
+}
+
+function spielplanR() {
+  const el = document.getElementById('spielplan-content');
+  if (!el) return;
+  const liste = planNachDatum(spielplanListe());
+  const kopf = '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">'
+    + '<button class="btn btn-prim btn-sm" type="button" onclick="spielplanImportOeffnen()">📥 Importieren</button>'
+    + '<button class="btn btn-out btn-sm" type="button" onclick="planSpielBearbeiten()">＋ Spiel</button>'
+    + '<a class="btn btn-out btn-sm" href="' + h(spielplanUrl()) + '" target="_blank" rel="noopener">📄 PDF</a></div>'
+    + (S.spielplan && S.spielplan.stand ? '<div style="font-size:.6875rem;color:var(--mut);margin:-.375rem 0 .625rem">Stand ' + h(S.spielplan.stand) + '</div>' : '');
+  if (!liste.length) { el.innerHTML = kopf + '<p style="color:var(--mut);font-size:.8125rem">Noch kein Spielplan. Importiere ihn aus dem bfv.de-PDF.</p>'; return; }
+  el.innerHTML = kopf + '<div class="db-match-list">' + liste.map(g => {
+    const e = planEintrag(g.id);
+    const klasse = e ? dashboardErgebnisKlasse(e) : '';
+    const rechts = e ? '✅ ' + e.heim + ' - ' + e.auswaerts : (g.ergebnis ? g.ergebnis.heim + ' - ' + g.ergebnis.auswaerts : 'offen');
+    return '<div class="db-match-row' + klasse + '"><div class="db-match-head"><span class="db-match-side">' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + '</span>'
+      + '<div class="db-match-head-right"><span class="db-match-date">' + h(planDatumText(g)) + '</span>'
+      + '<button class="ib edit" type="button" onclick="planSpielBearbeiten(\'' + g.id + '\')" aria-label="Spiel bearbeiten" style="width:28px;height:28px;font-size:.8rem">✏️</button>'
+      + '<button class="ib" type="button" onclick="planSpielLoeschen(\'' + g.id + '\')" aria-label="Spiel löschen" style="width:28px;height:28px;font-size:.8rem">🗑️</button></div></div>'
+      + '<div class="db-match-body"><span class="db-match-teams">' + planTeamsText(g) + '</span><span class="db-match-score" style="font-size:.9rem">' + h(rechts) + '</span></div></div>';
+  }).join('') + '</div>';
+}
+
 /* ===== ALLES RENDERN ===== */
 function allesR() {
-  dbR(); spielerR(); trainerR(); trainingR(); planR(); spielplanungR(); gegnerR(); torschuetzenR(); matchAufstellungR(); tonButtonR();
+  spielplanR(); dbR(); spielerR(); trainerR(); trainingR(); planR(); spielplanungR(); gegnerR(); torschuetzenR(); matchAufstellungR(); tonButtonR();
 }
 
 /* ===== EVENTS ===== */
