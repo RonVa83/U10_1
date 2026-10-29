@@ -2,7 +2,7 @@
 // Variant A: no client-side secret. Origin allowlist + basic per-IP rate limit.
 // Important: Origin checks are not authentication; non-browser clients can spoof Origin.
 const ALLOWED_ORIGIN = "https://ronva83.github.io";
-const RATE_LIMIT_PER_HOUR = 50;
+const RATE_LIMIT_PER_HOUR = 20;
 const MAX_PLAYERS = 50;
 
 function corsHeaders(origin) {
