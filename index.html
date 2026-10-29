@@ -972,7 +972,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 /* ===== KONSTANTEN ===== */
 
-const APP_VERSION = '28.10.2026';
+const APP_VERSION = '29.10.2026';
 const SK = 'trainingsplaner_v1';
 // Co-Trainer-Integration: Team-A-Liste wird an die Cloudflare-API gesendet.
 // Kein geheimes Passwort im öffentlichen Frontend hinterlegen.
@@ -986,6 +986,8 @@ const LIGA_STANDARD = 'U10 Ost Rosa';
 
 // Einstellungen (leer = Standard)
 function einst() { return (S.einstellungen && typeof S.einstellungen === 'object') ? S.einstellungen : {}; }
+// Team B ist standardmäßig aktiv, damit bestehende Installationen unverändert bleiben.
+function teamBAktiv() { return einst().teamBAktiv !== false; }
 function dfbnetUrl()  { return urlNormalisieren(einst().linkDfbnet)  || DFBNET_URL; }
 function tabelleUrl() { return urlNormalisieren(einst().linkTabelle) || BFV_TABELLE_URL; }
 function ligaName()   { return einst().liga || LIGA_STANDARD; }
@@ -1866,7 +1868,7 @@ function dbR() {
     {icon:'⚽', w:S.spieler.length, l:'Spieler'},
     {icon:'✅', w:aSp,              l:'Anwesend'},
     {icon:'🔵', w:weA,             l:'Team A'},
-    {icon:'🔴', w:weB,             l:'Team B'},
+    ...(teamBAktiv() ? [{icon:'🔴', w:weB, l:'Team B'}] : []),
   ];
 
   const se = document.getElementById('db-stats');
@@ -2968,7 +2970,7 @@ function spielplanungPlanR() {
     const teamBtns = an
       ? '<div class="team-btns">'
         + '<button class="team-btn' + (s.spielteam==='A'?' ak':'') + '" onclick="setSpielteam(\'' + s.id + '\',\'A\')">A</button>'
-        + '<button class="team-btn' + (s.spielteam==='B'?' ak':'') + '" onclick="setSpielteam(\'' + s.id + '\',\'B\')">B</button>'
+        + (teamBAktiv() ? '<button class="team-btn' + (s.spielteam==='B'?' ak':'') + '" onclick="setSpielteam(\'' + s.id + '\',\'B\')">B</button>' : '')
         + '</div>'
       : '<div style="width:47px"></div>';
     return '<li class="we-z">'
@@ -3041,7 +3043,7 @@ function spielplanungPlanR() {
     + '</div>'
     + '<div style="display:flex;flex-direction:column;gap:.5rem">'
     + teamKarte('🔵', 'A', teamA, S.spielplanung&&S.spielplanung.lineupA)
-    + teamKarte('🔴', 'B', teamB, S.spielplanung&&S.spielplanung.lineupB)
+    + (teamBAktiv() ? teamKarte('🔴', 'B', teamB, S.spielplanung&&S.spielplanung.lineupB) : '')
     + '</div></div>'
     + '<div class="tr-ber" style="margin-bottom:0">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.375rem">'
@@ -3137,6 +3139,8 @@ function einstellungenOeffnen() {
     + feld('e-liga', 'Name der Liga (im Spielstand)', e.liga, LIGA_STANDARD)
     + feld('e-verein', 'Verein in der Tabelle hervorheben', e.verein, EIGENER_VEREIN)
     + '<div style="font-size:.6875rem;color:var(--mut);margin:-.75rem 0 1rem">Suchbegriff im Mannschaftsnamen, z. B. „Ebersberg“.</div>'
+    + '<label style="display:flex;align-items:center;gap:.625rem;margin:0 0 .5rem;min-height:44px;cursor:pointer"><input id="e-team-b" type="checkbox" style="width:22px;height:22px;flex-shrink:0"' + (e.teamBAktiv === false ? '' : ' checked') + '><span style="font-size:.875rem">🔴 Team B anzeigen und verwenden</span></label>'
+    + '<div style="font-size:.6875rem;color:var(--mut);margin:0 0 1rem">Wenn ausgeschaltet, werden Team-B-Auswahl, Aufstellungen, Einsatzplan und Team-B-Statistik ausgeblendet. Gespeicherte Team-B-Daten bleiben erhalten.</div>'
     + '<label style="display:flex;align-items:center;gap:.625rem;margin:0 0 1rem;min-height:44px;cursor:pointer"><input id="e-vornamen" type="checkbox" style="width:22px;height:22px;flex-shrink:0"' + (e.nurVornamen === false ? '' : ' checked') + '><span style="font-size:.875rem">🤖 Nur Vornamen an den Co-Trainer senden</span></label>'
     + '<div style="font-size:.8125rem;font-weight:700;color:var(--txt);margin:.25rem 0 .25rem">Gewichtung der Mannschaftseinteilung</div>'
     + '<div style="font-size:.6875rem;color:var(--mut);margin-bottom:.5rem">Wie stark zählen die drei Werte? 1 = Standard, 0 = ignorieren, 2 = doppelt so wichtig. Gilt für „🔀 Einteilen“ im Training und „🔀 Auto“ bei den Spielen.</div>'
@@ -3220,6 +3224,8 @@ function einstellungenSpeichern() {
   e.eigeneLinks = eigene;
   e.gewicht = gewicht;
   e.nurVornamen = !!document.getElementById('e-vornamen')?.checked;
+  e.teamBAktiv = !!document.getElementById('e-team-b')?.checked;
+  if (!e.teamBAktiv && S.aufstellung) S.aufstellung.team = 'A';
   speichern();
   modalSch();
   allesR();
@@ -3290,7 +3296,7 @@ function matchAufstellungDaten(team, q) {
 
 // Spieler für Auswahlfenster: erst die im aktuellen Viertel eingeplanten, dann der Rest des Kaders
 function matchSpielerListe() {
-  const team = S.aufstellung && S.aufstellung.team === 'B' ? 'B' : 'A';
+  const team = teamBAktiv() && S.aufstellung && S.aufstellung.team === 'B' ? 'B' : 'A';
   const q = Math.max(0, spielTimer.aktuelle - 1);
   const daten = matchAufstellungDaten(team, q);
   const kader = aufKader(team);
@@ -3316,6 +3322,7 @@ function matchAufToggle() {
 }
 
 function matchAufTeam(t) {
+  if (t === 'B' && !teamBAktiv()) return;
   S.aufstellung.team = t;
   speichern();
   matchAufstellungR();
@@ -3344,7 +3351,7 @@ function matchAufstellungR() {
   if (!el) return;
   matchAufQ = spielTimer.aktuelle;
   const A = S.aufstellung;
-  const team = A.team === 'B' ? 'B' : 'A';
+  const team = teamBAktiv() && A.team === 'B' ? 'B' : 'A';
   const q = Math.max(0, spielTimer.aktuelle - 1);
   const offen = !!(S.einstellungen && S.einstellungen.matchAufOffen);
   const aktuell = matchAufstellungDaten(team, q);
@@ -3367,7 +3374,8 @@ function matchAufstellungR() {
   let body = '';
   if (offen) {
     const teamBtn = (t, icon) => '<button class="timer-quarter-btn' + (team === t ? ' active' : '') + '" type="button" onclick="matchAufTeam(\'' + t + '\')">' + icon + ' Team ' + t + '</button>';
-    body = '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin:.625rem 0">' + teamBtn('A', '🔵') + teamBtn('B', '🔴') + '</div>';
+    body = '<div class="timer-quarter-row" style="grid-template-columns:repeat(' + (teamBAktiv() ? 2 : 1) + ',minmax(0,1fr));margin:.625rem 0">' + teamBtn('A', '🔵') + (teamBAktiv() ? teamBtn('B', '🔴') : '') + '</div>';
+    if (!teamBAktiv() && team === 'B') { S.aufstellung.team = 'A'; }
     if (aktuell) {
       const imFeld = new Set(aktuell.row.filter(Boolean));
       const bank = aufKader(team).filter(x => !imFeld.has(x.id));
@@ -3488,6 +3496,7 @@ function aufstellungR() {
   const viertel = (S.spielplanung && S.spielplanung.viertel) || 4;
   if (A.q >= viertel) A.q = 0;
   if (!FORMATIONEN[A.formation]) A.formation = '2-3-1';
+  if (!teamBAktiv() && A.team === 'B') A.team = 'A';
 
   const lineup = aufLineup(A.team, A.q);
   const slots = aufSlots(A.formation);
@@ -3520,13 +3529,13 @@ function aufstellungR() {
   const bank = aufKader(A.team).filter(x => !imFeld.has(x.id));
   const belegt = lineup.filter(Boolean).length;
 
-  const teamBtn = (t, icon) => '<button class="timer-quarter-btn' + (A.team === t ? ' active' : '') + '" type="button" onclick="aufstellungSet(\'team\',\'' + t + '\')">' + icon + ' Team ' + t + '</button>';
+  const teamBtn = (t, icon) => '<button class="timer-quarter-btn' + (A.team === t ? ' active' : '') + '" type="button" onclick="aufstellungSet(\'team\',\'' + t + '\')">' + icon + ' Team ' + t + '</button>'; 
   const qBtns = Array.from({length: viertel}, (_, q) =>
     '<button class="timer-quarter-btn' + (A.q === q ? ' active' : '') + '" type="button" onclick="aufstellungSet(\'q\',' + q + ')">V' + (q + 1) + '</button>'
   ).join('');
 
   el.innerHTML =
-    '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:.5rem">' + teamBtn('A', '🔵') + teamBtn('B', '🔴') + '</div>'
+    '<div class="timer-quarter-row" style="grid-template-columns:repeat(' + (teamBAktiv() ? 2 : 1) + ',minmax(0,1fr));margin-bottom:.5rem">' + teamBtn('A', '🔵') + (teamBAktiv() ? teamBtn('B', '🔴') : '') + '</div>'
     + '<div class="timer-quarter-row" style="grid-template-columns:repeat(' + Math.min(viertel, 8) + ',minmax(0,1fr));margin-bottom:.5rem">' + qBtns + '</div>'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">'
     + '<label style="font-size:.8125rem;color:var(--mut)">Formation '
@@ -3720,6 +3729,7 @@ function aufstellungVorschlag() {
 }
 
 function aufstellungSet(feld, wert) {
+  if (feld === 'team' && wert === 'B' && !teamBAktiv()) return;
   S.aufstellung[feld] = wert;
   speichern();
   aufstellungR();
@@ -4126,7 +4136,7 @@ function einsatzR() {
       + '<div style="margin-top:.375rem;display:flex;flex-wrap:wrap;gap:.25rem 6px">'+summary+'</div>'
       + '</div>';
   };
-  el.innerHTML = renderTeam('A', sp.lineupA) + renderTeam('B', sp.lineupB);
+  el.innerHTML = renderTeam('A', sp.lineupA) + (teamBAktiv() ? renderTeam('B', sp.lineupB) : '');
 }
 
 /* ===== WHATSAPP ===== */
@@ -5556,7 +5566,7 @@ function notenR() {
 
 // Beim Speichern eines Spiels: Viertel je Spieler aus der Aufstellung bzw. dem Einsatzplan übernehmen
 function einsaetzeAusAufstellung() {
-  const team = S.aufstellung && S.aufstellung.team === 'B' ? 'B' : 'A';
+  const team = teamBAktiv() && S.aufstellung && S.aufstellung.team === 'B' ? 'B' : 'A';
   const proSpieler = {};
   for (let q = 0; q < spielTimer.viertel; q++) {
     const d = matchAufstellungDaten(team, q);
