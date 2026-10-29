@@ -857,19 +857,20 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
         <h2>📊 Dashboard</h2>
       </div>
       <div id="db-hint"></div>
-      <div id="db-spiele"></div>
-    </section>
-
-    <!-- Statistik: alle Kennzahlen und Tabellen gesammelt an einem Ort -->
-    <section id="tab-statistik" class="tab-s">
-      <div class="sek-h"><h2>📈 Statistik</h2></div>
       <div id="db-stats"></div>
       <div id="db-tabelle"></div>
+    </section>
+
+    <!-- Statistik: Ergebnisse, Spielerstatistiken und Trainingsbeteiligung -->
+    <section id="tab-statistik" class="tab-s">
+      <div class="sek-h"><h2>📈 Statistik</h2></div>
+      <div id="db-spiele"></div>
       <div id="db-stat-chips"></div>
       <div id="db-torschuetzen"></div>
       <div id="db-scorer"></div>
       <div id="db-noten"></div>
       <div id="db-einsaetze"></div>
+      <div id="stat-training" style="margin-top:1rem"></div>
     </section>
 
     <!-- Match -->
@@ -2102,7 +2103,7 @@ function trainingR() {
     <div class="tr-ber" style="margin-bottom:0">
       <button class="btn btn-prim btn-full" onclick="planErstellen()">🗒️ Trainingsplan erstellen</button>
     </div>
-    <div id="anw-statistik" style="margin-top:1.25rem"></div>`;
+    `;
 
   teamsR(document.getElementById('teams-ziel'));
   trainingAnwesenheitR();
@@ -2166,7 +2167,7 @@ function trainingUmschalten(was) {
 }
 
 function trainingAnwesenheitR() {
-  const el = document.getElementById('anw-statistik');
+  const el = document.getElementById('stat-training');
   if (!el) return;
   const einheiten = trainingEinheiten();
   const aSp = S.spieler.filter(s => s.anwesend).length;
