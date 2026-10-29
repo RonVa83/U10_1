@@ -108,6 +108,8 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .tab-s { display: none; padding: 1rem; max-width: 1200px; margin: 0 auto; width: 100%; }
 .tab-s.active { display: block; }
 
+.spiel-subsection { margin-top: 1rem; padding-top: .25rem; }
+.spiel-subsection + .spiel-subsection { border-top: 1px solid var(--brd); padding-top: 1rem; }
 /* ===== SEKTIONSHEADER ===== */
 .sek-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: .5rem; }
 .sek-h h2 { font-size: 1.375rem; font-weight: 700; color: var(--prim); }
@@ -839,19 +841,15 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   <!-- Desktop Top-Nav -->
   <nav id="top-nav">
     <button class="nav-tab active" data-tab="dashboard">📊 Dashboard</button>
-    <button class="nav-tab" data-tab="timer">⏱️ Match</button>
-    <button class="nav-tab" data-tab="spieler">👥 Team</button>
-    <button class="nav-tab" data-tab="training">⚽ Training</button>
-    <button class="nav-tab" data-tab="trainingsplan">📋 Trainingsplan</button>
-    <button class="nav-tab" data-tab="spielplanung">⚽ Spielplanung</button>
-    <button class="nav-tab" data-tab="gegner">🔍 Gegner</button>
-    <button class="nav-tab" data-tab="statistik">📈 Statistik</button>
+    <button class="nav-tab" data-tab="spiel">⚽ Spiel</button>
+    <button class="nav-tab" data-tab="training">🏃 Training</button>
+    <button class="nav-tab" data-tab="statistik">📈 Statistiken</button>
+    <button class="nav-tab" id="top-nav-mehr" type="button" onclick="mehrMenueOeffnen()">☰ Mehr</button>
   </nav>
 
   <!-- Haupt-Inhaltsbereich -->
   <main id="main-content">
 
-    <!-- Dashboard -->
     <section id="tab-dashboard" class="tab-s active">
       <div class="sek-h">
         <h2>📊 Dashboard</h2>
@@ -861,7 +859,37 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="db-tabelle"></div>
     </section>
 
-    <!-- Statistik: Ergebnisse, Spielerstatistiken und Trainingsbeteiligung -->
+    <!-- Spiel: alle spielbezogenen Werkzeuge in einem Hauptreiter -->
+    <section id="tab-spiel" class="tab-s">
+      <div class="sek-h"><h2>⚽ Spiel</h2></div>
+      <div id="spiel-anwesenheit" class="spiel-subsection"></div>
+      <div id="tab-timer" class="spiel-subsection">
+      <div class="sek-h">
+        <h2>⏱️ Match</h2>
+        <div class="sek-h-act"><button id="ton-btn" class="btn btn-out btn-sm" type="button" onclick="tonUmschalten()" aria-label="Signalton">🔔</button></div>
+      </div>
+      <div id="timer-aufstellung"></div>
+      <div id="timer-panel"></div>
+    </div>
+      <div id="tab-spielplanung" class="spiel-subsection">
+      <div class="sek-h"><h2>⚽ Spielplanung</h2></div>
+      <div id="spielplanung-content"></div>
+    </div>
+      <div id="tab-gegner" class="spiel-subsection">
+      <div class="sek-h"><h2>🔍 Gegner-Analyse</h2></div>
+      <div id="gegner-content"></div>
+    </div>
+    </section>
+
+    <!-- Training: Anwesenheit, Trainingseinheiten und Trainingsplan -->
+    <section id="tab-training" class="tab-s">
+      <div class="sek-h"><h2>⚽ Training</h2></div>
+      <div id="training-content"></div>
+      <div id="stat-training" style="margin-top:1rem"></div>
+      <div class="sek-h" style="margin-top:1.25rem"><h2>📋 Trainingsplan</h2></div>
+      <div id="plan-content"></div>
+    </section>
+
     <section id="tab-statistik" class="tab-s">
       <div class="sek-h"><h2>📈 Statistik</h2></div>
       <div id="db-spiele"></div>
@@ -870,20 +898,8 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="db-scorer"></div>
       <div id="db-noten"></div>
       <div id="db-einsaetze"></div>
-      <div id="stat-training" style="margin-top:1rem"></div>
     </section>
 
-    <!-- Match -->
-    <section id="tab-timer" class="tab-s">
-      <div class="sek-h">
-        <h2>⏱️ Match</h2>
-        <div class="sek-h-act"><button id="ton-btn" class="btn btn-out btn-sm" type="button" onclick="tonUmschalten()" aria-label="Signalton">🔔</button></div>
-      </div>
-      <div id="timer-aufstellung"></div>
-      <div id="timer-panel"></div>
-    </section>
-
-    <!-- Spieler & Trainer -->
     <section id="tab-spieler" class="tab-s">
       <div class="sek-h">
         <h2>👥 Team</h2>
@@ -902,31 +918,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
       <div id="trainer-liste"></div>
     </section>
 
-    <!-- Training -->
-    <section id="tab-training" class="tab-s">
-      <div class="sek-h"><h2>⚽ Training</h2></div>
-      <div id="training-content"></div>
-    </section>
-
-    <!-- Trainingsplan -->
-    <section id="tab-trainingsplan" class="tab-s">
-      <div class="sek-h"><h2>📋 Trainingsplan</h2></div>
-      <div id="plan-content"></div>
-    </section>
-
-    <!-- Spielplanung -->
-    <section id="tab-spielplanung" class="tab-s">
-      <div class="sek-h"><h2>⚽ Spielplanung</h2></div>
-      <div id="spielplanung-content"></div>
-    </section>
-
-    <!-- Gegner-Analyse -->
-    <section id="tab-gegner" class="tab-s">
-      <div class="sek-h"><h2>🔍 Gegner-Analyse</h2></div>
-      <div id="gegner-content"></div>
-    </section>
-
-
   </main>
 
   <!-- Mobil Bottom-Nav (S25) -->
@@ -934,17 +925,14 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
     <button class="nav-tab active" data-tab="dashboard" aria-label="Dashboard">
       <span class="nav-icon">📊</span><span class="nav-label">Dashboard</span>
     </button>
-    <button class="nav-tab" data-tab="timer" aria-label="Match">
-      <span class="nav-icon">⏱️</span><span class="nav-label">Match</span>
+    <button class="nav-tab" data-tab="spiel" aria-label="Spiel">
+      <span class="nav-icon">⚽</span><span class="nav-label">Spiel</span>
     </button>
-    <button class="nav-tab" data-tab="spieler" aria-label="Team">
-      <span class="nav-icon">👥</span><span class="nav-label">Team</span>
+    <button class="nav-tab" data-tab="training" aria-label="Training">
+      <span class="nav-icon">🏃</span><span class="nav-label">Training</span>
     </button>
-    <button class="nav-tab" data-tab="spielplanung" aria-label="Spielplanung">
-      <span class="nav-icon">🧩</span><span class="nav-label">Spiele</span>
-    </button>
-    <button class="nav-tab" data-tab="gegner" aria-label="Gegner-Analyse">
-      <span class="nav-icon">🔍</span><span class="nav-label">Gegner</span>
+    <button class="nav-tab" data-tab="statistik" aria-label="Statistiken">
+      <span class="nav-icon">📈</span><span class="nav-label">Statistik</span>
     </button>
     <button class="nav-tab" id="nav-mehr" type="button" onclick="mehrMenueOeffnen()" aria-label="Mehr">
       <span class="nav-icon">☰</span><span class="nav-label">Mehr</span>
@@ -1019,7 +1007,7 @@ const TEAM_KEYS  = ['I','II','III','IV','V','VI'];
 const TEAM_ICONS = { I:'🟦', II:'🟥', III:'🟩', IV:'🟨', V:'🟧', VI:'🟪' };
 
 /* ===== STATE ===== */
-let S = { spieler:[], trainer:[], schwerpunkte:[], mannschaften:['I','II','III'], einstellungen:{}, spielplanung:{viertel:4,dauerMin:15,lineupA:[],lineupB:[],gk1A:null,gk1B:null}, spielstand:{heim:0,auswaerts:0,tore:[], unsereMannschaft:'heim'}, dashboardSpiele:[], training:{einheiten:[]}, tabelle:{zeilen:[],stand:''}, aufstellung:{team:'A',q:0,formation:'2-3-1',lineup:{A:[],B:[]}}, gegner:{viertel:4,spieler:['1','2','3','5','6','7','8','9','10','11','12'],lineup:[],twPerQ:[],code:'GEG'} };
+let S = { spieler:[], trainer:[], schwerpunkte:[], mannschaften:['I','II','III'], einstellungen:{}, spielplanung:{viertel:4,dauerMin:15,lineupA:[],lineupB:[],gk1A:null,gk1B:null}, spielstand:{heim:0,auswaerts:0,tore:[], unsereMannschaft:'heim'}, dashboardSpiele:[], spielAnwesenheit:{einheiten:[]}, training:{einheiten:[]}, tabelle:{zeilen:[],stand:''}, aufstellung:{team:'A',q:0,formation:'2-3-1',lineup:{A:[],B:[]}}, gegner:{viertel:4,spieler:['1','2','3','5','6','7','8','9','10','11','12'],lineup:[],twPerQ:[],code:'GEG'} };
 let aktiverPlan = null;
 let modal = { typ:null, id:null, sterne:{} };
 let toastTimer = null;
@@ -1073,6 +1061,7 @@ function datenUebernehmen(d) {
   S.spielplanung   = Object.assign({viertel:4,dauerMin:15,lineupA:[],lineupB:[],gk1A:null,gk1B:null}, d.spielplanung||{});
   S.spielstand     = Object.assign({heim:0, auswaerts:0, tore:[], unsereMannschaft:'heim'}, d.spielstand||{});
   S.dashboardSpiele = Array.isArray(d.dashboardSpiele) ? d.dashboardSpiele : [];
+  S.spielAnwesenheit = (d.spielAnwesenheit && Array.isArray(d.spielAnwesenheit.einheiten)) ? d.spielAnwesenheit : {einheiten:[]};
   S.gegner         = Object.assign({viertel:4,spieler:['1','2','3','5','6','7','8','9','10','11','12'],lineup:[],twPerQ:[],code:'GEG'}, d.gegner||{});
   S.tabelle        = (d.tabelle && Array.isArray(d.tabelle.zeilen)) ? d.tabelle : {zeilen:[],stand:''};
   S.training       = (d.training && Array.isArray(d.training.einheiten)) ? d.training : {einheiten:[]};
@@ -1355,7 +1344,6 @@ function spielerZeile(s) {
       <button class="foto-btn" type="button" onclick="spielerFotoModal('${s.id}')" aria-label="Profil öffnen">${avatarHtml(s.name, s.foto, 28)}</button>
       <input class="sp-inp" type="text" value="${h(s.name)}" aria-label="Name" maxlength="60" autocapitalize="words" autocomplete="off"
              onblur="spNameBlur(this,'${s.id}')" onkeydown="if(event.key==='Enter')this.blur()">
-      <button class="anw-btn ${s.anwesend?'an':'ab'}" data-anwsp="${s.id}" onclick="spielerAnw('${s.id}')" aria-label="${s.anwesend?'Anwesend':'Abwesend'}" style="${btnStil}">${s.anwesend?'✅':'⭕'}</button>
       <button class="ib" onclick="spielerHoch('${s.id}')" aria-label="Nach oben" style="width:28px;height:28px;font-size:.8rem">⬆️</button>
       <button class="ib" onclick="spielerRunter('${s.id}')" aria-label="Nach unten" style="width:28px;height:28px;font-size:.8rem">⬇️</button>
       <button class="ib" onclick="spielerDel('${s.id}')" aria-label="Löschen" style="width:28px;height:28px;font-size:.8rem">🗑️</button>
@@ -1737,6 +1725,79 @@ function spielTimerMarkup() {
       <div class="timer-quarter-row">${quarterButtons}</div>
     </div>
   `;
+}
+
+/* ===== SPIEL-ANWESENHEIT ===== */
+let spielAnwDatum = '';
+let spielAnwGeladenDatum = '';
+let spielAnwAuswahl = new Set();
+function spielAnwesenheitEinheiten() {
+  if (!S.spielAnwesenheit || !Array.isArray(S.spielAnwesenheit.einheiten)) S.spielAnwesenheit = {einheiten:[]};
+  return S.spielAnwesenheit.einheiten;
+}
+function spielAnwesenheitR() {
+  const el = document.getElementById('spiel-anwesenheit');
+  if (!el) return;
+  const einheiten = spielAnwesenheitEinheiten();
+  if (!spielAnwDatum) spielAnwDatum = datumIso(new Date());
+  if (spielAnwGeladenDatum !== spielAnwDatum) {
+    const gespeichert = einheiten.find(e => e.datum === spielAnwDatum);
+    spielAnwAuswahl = new Set(gespeichert ? (gespeichert.spieler || []) : []);
+    spielAnwGeladenDatum = spielAnwDatum;
+  }
+  const datum = h(spielAnwDatum);
+  el.innerHTML = '<div class="ber-ti" style="margin-bottom:.5rem">👥 Wer war beim Spiel dabei?</div>'
+    + '<div class="karte" style="padding:.75rem;margin-bottom:.625rem">'
+    + '<label style="display:flex;align-items:center;gap:.5rem;font-size:.875rem;font-weight:700;margin-bottom:.625rem">Spieltag <input id="spiel-anw-datum" type="date" value="' + datum + '" onchange="spielAnwesenheitDatumAend(this.value)" style="margin-left:auto;max-width:170px;padding:.4rem;border:1px solid var(--brd);border-radius:8px;background:var(--bg);color:var(--txt)"></label>'
+    + '<div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap"><button class="btn btn-out btn-sm" type="button" onclick="spielAnwesenheitAlle(true)">Alle auswählen</button><button class="btn btn-out btn-sm" type="button" onclick="spielAnwesenheitAlle(false)">Alle abwählen</button><span id="spiel-anw-count" style="margin-left:auto;align-self:center;font-size:.8125rem;color:var(--mut)">' + spielAnwAuswahl.size + ' von ' + S.spieler.length + ' dabei</span></div>'
+    + '<div style="display:flex;flex-direction:column;gap:.25rem">'
+    + S.spieler.map(sp => '<label style="display:flex;align-items:center;gap:.625rem;padding:.375rem .125rem;border-top:1px solid var(--brd);min-height:42px;cursor:pointer"><input type="checkbox" ' + (spielAnwAuswahl.has(sp.id) ? 'checked ' : '') + 'onchange="spielAnwesenheitToggle(\'' + sp.id + '\',this.checked)" style="width:21px;height:21px;flex-shrink:0">' + avatarHtml(sp.name, sp.foto, 26) + '<span style="flex:1;font-size:.875rem;font-weight:600">' + h(sp.name) + '</span></label>').join('')
+    + (S.spieler.length ? '' : '<p style="color:var(--mut);font-size:.8125rem">Bitte zuerst unter Mehr → Team Spieler hinzufügen.</p>')
+    + '</div><button class="btn btn-prim btn-full" style="margin-top:.75rem" type="button" onclick="spielAnwesenheitSpeichern()">💾 Spielanwesenheit speichern</button></div>'
+    + '<div style="font-size:.8125rem;font-weight:700;color:var(--mut);margin:.75rem 0 .375rem">Gespeicherte Spieltage</div>'
+    + (einheiten.length ? '<ul style="list-style:none;display:flex;flex-direction:column;gap:.375rem">' + einheiten.slice().sort((a,b)=>b.datum.localeCompare(a.datum)).map(e => '<li class="we-z" style="padding:.375rem .625rem"><button class="btn btn-out btn-sm" type="button" style="flex:1;text-align:left" onclick="spielAnwesenheitLaden(\'' + e.datum + '\')">' + h(datumAnzeige(e.datum)) + '</button><span style="font-size:.8125rem;color:var(--mut)">' + (e.spieler||[]).length + ' Spieler</span><button class="ib" type="button" aria-label="Spieltag löschen" onclick="spielAnwesenheitLoeschen(\'' + e.id + '\')">🗑️</button></li>').join('') + '</ul>' : '<p style="font-size:.8125rem;color:var(--mut)">Noch keine Spielanwesenheit gespeichert.</p>');
+}
+function spielAnwesenheitDatumAend(datum) {
+  spielAnwDatum = datum || datumIso(new Date());
+  const e = spielAnwesenheitEinheiten().find(x => x.datum === spielAnwDatum);
+  spielAnwAuswahl = new Set(e ? (e.spieler || []) : []);
+  spielAnwGeladenDatum = spielAnwDatum;
+  spielAnwesenheitR();
+}
+function spielAnwesenheitToggle(id, an) {
+  if (an) spielAnwAuswahl.add(id); else spielAnwAuswahl.delete(id);
+  const count = document.getElementById('spiel-anw-count');
+  if (count) count.textContent = spielAnwAuswahl.size + ' von ' + S.spieler.length + ' dabei';
+}
+function spielAnwesenheitAlle(an) {
+  spielAnwAuswahl = new Set(an ? S.spieler.map(sp => sp.id) : []);
+  spielAnwesenheitR();
+}
+function spielAnwesenheitLaden(datum) {
+  spielAnwDatum = datum;
+  const e = spielAnwesenheitEinheiten().find(x => x.datum === datum);
+  spielAnwAuswahl = new Set(e ? (e.spieler || []) : []);
+  spielAnwGeladenDatum = spielAnwDatum;
+  spielAnwesenheitR();
+}
+function spielAnwesenheitSpeichern() {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(spielAnwDatum || '')) { toastZ('Bitte einen Spieltag auswählen.', 'err'); return; }
+  const einheiten = spielAnwesenheitEinheiten();
+  const ids = S.spieler.filter(sp => spielAnwAuswahl.has(sp.id)).map(sp => sp.id);
+  const vorhanden = einheiten.find(e => e.datum === spielAnwDatum);
+  if (vorhanden) vorhanden.spieler = ids;
+  else einheiten.push({id:genId(), datum:spielAnwDatum, spieler:ids});
+  einheiten.sort((a,b)=>b.datum.localeCompare(a.datum));
+  speichern(); spielAnwesenheitR(); toastZ('✅ Spielanwesenheit gespeichert (' + ids.length + ' Spieler)', 'ok');
+}
+function spielAnwesenheitLoeschen(id) {
+  const e = spielAnwesenheitEinheiten().find(x => x.id === id);
+  if (!e) return;
+  bestaetigen('Spieltag löschen', 'Die Anwesenheit vom ' + datumAnzeige(e.datum) + ' wirklich löschen?', 'Löschen', () => {
+    S.spielAnwesenheit.einheiten = S.spielAnwesenheit.einheiten.filter(x => x.id !== id);
+    if (spielAnwDatum === e.datum) { spielAnwAuswahl = new Set(); spielAnwGeladenDatum = spielAnwDatum; }
+    speichern(); spielAnwesenheitR();
+  });
 }
 
 function spielTimerRender() {
@@ -2138,7 +2199,17 @@ function trainingStatistik() {
 
 function trainingFarbe(pct) { return pct >= 80 ? '#10B981' : pct >= 50 ? '#d97706' : '#EF4444'; }
 
-// Heutige Anwesenheit (aus dem Team-Reiter) als Training speichern
+// Trainingsanwesenheit direkt im Training-Reiter erfassen.
+function trainingHeuteToggle(id, an) {
+  const s = S.spieler.find(x => x.id === id);
+  if (!s) return;
+  s.anwesend = !!an;
+  speichern();
+  trainingAnwesenheitR();
+  trainingR();
+}
+
+// Die im Training-Reiter markierten Spieler als heutige Einheit speichern.
 function trainingSpeichern() {
   const anw = S.spieler.filter(s => s.anwesend);
   if (!anw.length) { toastZ('Keine anwesenden Spieler markiert.', 'err'); return; }
@@ -2178,8 +2249,13 @@ function trainingAnwesenheitR() {
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap">'
     + '<span style="font-size:.875rem">Heute anwesend: <b>' + aSp + '</b> von ' + S.spieler.length + '</span>'
     + '<button class="btn btn-prim btn-sm" type="button" onclick="trainingSpeichern()">💾 Training speichern</button></div>'
-    + '<p style="font-size:.75rem;color:var(--mut);margin-top:.5rem">Markiere im Team-Reiter mit ✅ / ⭕, wer da ist, und tippe dann auf „Training speichern“.</p>'
-    + '</div>';
+    + '<p style="font-size:.75rem;color:var(--mut);margin-top:.5rem">Setze die Häkchen direkt hier im Training-Reiter und speichere anschließend die Einheit.</p>'
+    + '<div style="display:flex;flex-direction:column;gap:.25rem;margin-top:.625rem">'
+    + S.spieler.map(s => '<label style="display:flex;align-items:center;gap:.625rem;padding:.375rem .125rem;border-top:1px solid var(--brd);min-height:42px;cursor:pointer">'
+      + '<input type="checkbox" ' + (s.anwesend ? 'checked ' : '') + 'onchange="trainingHeuteToggle(\'' + s.id + '\',this.checked)" style="width:21px;height:21px;flex-shrink:0">'
+      + avatarHtml(s.name, s.foto, 26) + '<span style="flex:1;font-size:.875rem;font-weight:600">' + h(s.name) + '</span></label>').join('')
+    + (S.spieler.length ? '' : '<p style="color:var(--mut);font-size:.8125rem">Bitte zuerst im Bereich Mehr → Team Spieler hinzufügen.</p>')
+    + '</div></div>';
 
   // Vergangene Trainings
   const LIMIT = 3;
@@ -2332,7 +2408,7 @@ function planErstellen() {
     }))
   };
 
-  tabW('trainingsplan');
+  tabW('training');
   planR();
   toastZ('✅ Trainingsplan erstellt!','ok');
 }
@@ -3102,9 +3178,7 @@ function mehrMenueOeffnen() {
   document.getElementById('modal-body').innerHTML =
     '<div style="display:flex;flex-direction:column;gap:.5rem">'
     + titel('Seiten')
-    + eintrag('⚽', 'Training', "mehrGehe('training')")
-    + eintrag('📋', 'Trainingsplan', "mehrGehe('trainingsplan')")
-    + eintrag('📈', 'Statistik', "mehrGehe('statistik')")
+    + eintrag('👥', 'Team verwalten', "mehrGehe('spieler')")
     + eigeneLinks
     + titel('Werkzeuge')
     + '<a class="btn btn-out btn-full" style="' + stil + '" href="' + h(dfbnetUrl()) + '" target="_blank" rel="noopener" onclick="modalSch()"><span style="font-size:1.25rem">📤</span>Ergebnis melden (DFBnet)</a>'
@@ -4326,20 +4400,23 @@ function tabW(id) {
   document.querySelectorAll('.tab-s').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   const mehrBtn = document.getElementById('nav-mehr');
-  if (mehrBtn) mehrBtn.classList.toggle('active', ['training', 'trainingsplan', 'statistik'].includes(id));
+  if (mehrBtn) mehrBtn.classList.toggle('active', id === 'spieler');
+  const topMehr = document.getElementById('top-nav-mehr');
+  if (topMehr) topMehr.classList.toggle('active', id === 'spieler');
 
   const sek = document.getElementById('tab-' + id);
   if (sek) sek.classList.add('active');
 
-  if (id === 'timer') {
+  if (id === 'spiel') {
+    spielAnwesenheitR();
     spielTimerRender();
     matchAufstellungR();
     tonButtonR();
+    spielplanungR();
+    gegnerR();
   }
-  if (id === 'training') trainingR();
-  if (id === 'trainingsplan') planR();
-  if (id === 'spielplanung') spielplanungR();
-  if (id === 'gegner') gegnerR();
+  if (id === 'training') { trainingR(); planR(); trainingAnwesenheitR(); }
+  if (id === 'spieler') { spielerR(document.getElementById('spieler-suche')?.value); trainerR(); }
   if (id === 'dashboard' || id === 'statistik') dbR();
 }
 
