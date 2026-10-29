@@ -2261,25 +2261,14 @@ function trainingAnwesenheitR() {
   const aSp = S.spieler.filter(s => s.anwesend).length;
   const { N, zeilen } = trainingStatistik();
 
-  let html = '<div class="ber-ti" style="margin-bottom:.5rem">📅 Trainingsanwesenheit</div>'
-    + '<div class="karte" style="padding:.75rem;margin-bottom:.625rem">'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap">'
-    + '<span style="font-size:.875rem">Heute anwesend: <b>' + aSp + '</b> von ' + S.spieler.length + '</span>'
-    + '<button class="btn btn-prim btn-sm" type="button" onclick="trainingSpeichern()">💾 Training speichern</button></div>'
-    + '<p style="font-size:.75rem;color:var(--mut);margin-top:.5rem">Setze die Häkchen direkt hier im Training-Reiter und speichere anschließend die Einheit.</p>'
-    + '<div style="display:flex;flex-direction:column;gap:.25rem;margin-top:.625rem">'
-    + S.spieler.map(s => '<label style="display:flex;align-items:center;gap:.625rem;padding:.375rem .125rem;border-top:1px solid var(--brd);min-height:42px;cursor:pointer">'
-      + '<input type="checkbox" ' + (s.anwesend ? 'checked ' : '') + 'onchange="trainingHeuteToggle(\'' + s.id + '\',this.checked)" style="width:21px;height:21px;flex-shrink:0">'
-      + avatarHtml(s.name, s.foto, 26) + '<span style="flex:1;font-size:.875rem;font-weight:600">' + h(s.name) + '</span></label>').join('')
-    + (S.spieler.length ? '' : '<p style="color:var(--mut);font-size:.8125rem">Bitte zuerst im Bereich Mehr → Team Spieler hinzufügen.</p>')
-    + '</div></div>';
+  let html = '<div class="ber-ti" style="margin-bottom:.5rem">📅 Trainingsbeteiligung</div>';
 
   // Vergangene Trainings
   const LIMIT = 3;
   const sichtbar = einheiten.slice(0, trainingAlleListe ? einheiten.length : LIMIT);
   html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.375rem">'
     + '<span style="font-size:.8125rem;font-weight:700;color:var(--mut)">Trainings (' + N + ')</span>'
-    + '<button class="btn btn-out btn-sm" type="button" onclick="trainingBearbeiten()">＋ Nachtragen</button></div>';
+    + '<button class="btn btn-out btn-sm" type="button" onclick="trainingBearbeiten()">＋ Training eintragen</button></div>';
   html += N
     ? '<ul style="list-style:none;display:flex;flex-direction:column;gap:.375rem;margin-bottom:.625rem">' + sichtbar.map(e =>
         '<li class="we-z" style="padding:.375rem .625rem">'
@@ -2346,7 +2335,7 @@ function trainingListeHtml() {
 function trainingBearbeiten(id) {
   const e = id ? trainingEinheiten().find(x => x.id === id) : null;
   modal = { typ: 'training', id: id || null, sterne: {}, datum: e ? e.datum : datumIso(new Date()), auswahl: new Set(e ? (e.spieler || []) : []) };
-  document.getElementById('modal-ti').textContent = e ? 'Training bearbeiten' : 'Training nachtragen';
+  document.getElementById('modal-ti').textContent = e ? 'Training bearbeiten' : 'Training eintragen';
   document.getElementById('modal-body').innerHTML =
     '<div class="fg"><label for="t-datum">Datum</label>'
     + '<input id="t-datum" type="date" value="' + h(modal.datum) + '" max="' + datumIso(new Date()) + '" oninput="modal.datum=this.value"></div>'
