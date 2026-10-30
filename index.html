@@ -877,10 +877,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
         <div class="sek-h"><h2>⚽ Spielplanung</h2></div>
         <div id="spielplanung-content"></div>
       </div>
-      <div id="tab-gegner" class="spiel-subsection">
-        <div class="sek-h"><h2>🔍 Gegner-Analyse</h2></div>
-        <div id="gegner-content"></div>
-      </div>
     </section>
 
     <!-- Match ist ein eigener Hauptreiter, unabhängig vom Bereich Spiel -->
@@ -892,6 +888,12 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
         </div>
         <div id="timer-aufstellung"></div>
         <div id="timer-panel"></div>
+        <div id="match-gegner" class="karte" style="margin-top:.75rem;padding:.625rem .75rem">
+          <button type="button" id="match-gegner-kopf" onclick="matchGegnerToggle()" style="display:flex;width:100%;align-items:center;gap:.5rem;background:none;border:none;text-align:left;cursor:pointer;color:var(--txt);padding:0;min-height:32px;touch-action:manipulation">
+            <span style="font-weight:800;color:var(--prim);flex:1">🔍 Gegner-Analyse</span><span id="match-gegner-pfeil" style="color:var(--mut)">▼</span>
+          </button>
+          <div id="gegner-content" style="margin-top:.75rem"></div>
+        </div>
       </div>
     </section>
 
@@ -2221,7 +2223,7 @@ function trainingSpeichern() {
 }
 
 let trainingAlleListe = false;
-let trainingAlleTabelle = false;
+let trainingAlleTabelle = true;
 
 function trainingUmschalten(was) {
   if (was === 'liste') trainingAlleListe = !trainingAlleListe; else trainingAlleTabelle = !trainingAlleTabelle;
@@ -4546,13 +4548,12 @@ function spielUnterpunktWaehlen(k) {
   const bereiche = {
     vergangen: document.getElementById('spiel-vergangen'),
     plan: document.getElementById('spiel-plan'),
-    planung: document.getElementById('tab-spielplanung'),
-    gegner: document.getElementById('tab-gegner')
+    planung: document.getElementById('tab-spielplanung')
   };
   Object.entries(bereiche).forEach(([key, el]) => { if (el) el.style.display = key === k ? '' : 'none'; });
   const nav = document.getElementById('spiel-sub-chips');
   if (nav) nav.innerHTML = '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:.75rem">'
-    + [{k:'plan',l:'📆 Spielplan'},{k:'planung',l:'📋 Spielplanung'},{k:'gegner',l:'🔍 Gegner-Analyse'},{k:'vergangen',l:'🗂️ Vergangene Spiele'}].map(x => '<button class="timer-quarter-btn' + (x.k === k ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="spielUnterpunktWaehlen(\'' + x.k + '\')">' + x.l + '</button>').join('') + '</div>';
+    + [{k:'plan',l:'📆 Spielplan'},{k:'planung',l:'📋 Spielplanung'},{k:'vergangen',l:'🗂️ Vergangene Spiele'}].map(x => '<button class="timer-quarter-btn' + (x.k === k ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="spielUnterpunktWaehlen(\'' + x.k + '\')">' + x.l + '</button>').join('') + '</div>';
 }
 
 function trainingUnterpunktWaehlen(k) {
@@ -4581,12 +4582,13 @@ function tabW(id) {
   if (id === 'spiel') {
     spielplanR();
     spielplanungR();
-    gegnerR();
     spielUnterpunktWaehlen(spielUnterpunkt);
   }
   if (id === 'match') {
     spielTimerRender();
     matchAufstellungR();
+    gegnerR();
+    matchGegnerR();
     tonButtonR();
   }
   if (id === 'training') { trainingR(); planR(); trainingAnwesenheitR(); trainingUnterpunktWaehlen(trainingUnterpunkt); }
@@ -4651,6 +4653,22 @@ function gegnerAnalyse(G) {
   }
 
   return { benchCount, spielCount, violations };
+}
+
+// Gegner-Analyse im Match-Reiter ein-/ausklappen (Standard: offen)
+function matchGegnerR() {
+  const offen = !(S.einstellungen && S.einstellungen.matchGegnerOffen === false);
+  const c = document.getElementById('gegner-content');
+  const pf = document.getElementById('match-gegner-pfeil');
+  if (c) c.style.display = offen ? '' : 'none';
+  if (pf) pf.textContent = offen ? '▲' : '▼';
+}
+
+function matchGegnerToggle() {
+  if (!S.einstellungen || typeof S.einstellungen !== 'object') S.einstellungen = {};
+  S.einstellungen.matchGegnerOffen = (S.einstellungen.matchGegnerOffen === false);
+  speichern();
+  matchGegnerR();
 }
 
 function gegnerR() {
@@ -5491,7 +5509,7 @@ function dbStatistikR() {
     : '';
 }
 
-let dbAlleTorschuetzen = false;
+let dbAlleTorschuetzen = true;
 
 function dbTorschuetzenUmschalten() {
   dbAlleTorschuetzen = !dbAlleTorschuetzen;
@@ -5575,7 +5593,7 @@ function torschuetzenR() {
   dbStatistikR();
 }
 
-let dbAlleScorer = false;
+let dbAlleScorer = true;
 
 function dbScorerUmschalten() {
   dbAlleScorer = !dbAlleScorer;
@@ -5780,7 +5798,7 @@ function notenSpeichern() {
 
 /* --- Statistik im Dashboard --- */
 
-let dbAlleNoten = false;
+let dbAlleNoten = true;
 
 function dbNotenUmschalten() {
   dbAlleNoten = !dbAlleNoten;
@@ -5882,7 +5900,7 @@ function einsatzProfilHtml(sp) {
     + '<span style="font-size:.875rem">' + z.viertel + ' von ' + st.mog + ' Vierteln · ' + z.spiele + ' von ' + st.N + ' Spielen · <b style="color:' + einsatzFarbe(z.pct) + '">' + z.pct + ' %</b></span></div>';
 }
 
-let dbAlleEinsaetze = false;
+let dbAlleEinsaetze = true;
 
 function dbEinsaetzeUmschalten() {
   dbAlleEinsaetze = !dbAlleEinsaetze;
@@ -6389,7 +6407,7 @@ function spielplanR() {
 
 /* ===== ALLES RENDERN ===== */
 function allesR() {
-  spielplanR(); dbR(); spielerR(); trainerR(); trainingR(); planR(); spielplanungR(); gegnerR(); torschuetzenR(); matchAufstellungR(); tonButtonR();
+  spielplanR(); dbR(); spielerR(); trainerR(); trainingR(); planR(); spielplanungR(); gegnerR(); torschuetzenR(); matchAufstellungR(); matchGegnerR(); tonButtonR();
 }
 
 /* ===== EVENTS ===== */
