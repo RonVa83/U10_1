@@ -865,7 +865,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
     <section id="tab-spiel" class="tab-s">
       <div class="sek-h"><h2>⚽ Spiel</h2></div>
       <div id="spiel-sub-chips"></div>
-      <div id="spiel-anwesenheit" class="spiel-subsection"></div>
       <div id="spiel-vergangen" class="spiel-subsection" style="display:none">
         <div class="sek-h"><h2>🗂️ Vergangene Spiele</h2></div>
         <div id="db-spiele"></div>
@@ -1762,79 +1761,6 @@ function spielTimerMarkup() {
   `;
 }
 
-/* ===== SPIEL-ANWESENHEIT ===== */
-let spielAnwDatum = '';
-let spielAnwGeladenDatum = '';
-let spielAnwAuswahl = new Set();
-function spielAnwesenheitEinheiten() {
-  if (!S.spielAnwesenheit || !Array.isArray(S.spielAnwesenheit.einheiten)) S.spielAnwesenheit = {einheiten:[]};
-  return S.spielAnwesenheit.einheiten;
-}
-function spielAnwesenheitR() {
-  const el = document.getElementById('spiel-anwesenheit');
-  if (!el) return;
-  const einheiten = spielAnwesenheitEinheiten();
-  if (!spielAnwDatum) spielAnwDatum = datumIso(new Date());
-  if (spielAnwGeladenDatum !== spielAnwDatum) {
-    const gespeichert = einheiten.find(e => e.datum === spielAnwDatum);
-    spielAnwAuswahl = new Set(gespeichert ? (gespeichert.spieler || []) : []);
-    spielAnwGeladenDatum = spielAnwDatum;
-  }
-  const datum = h(spielAnwDatum);
-  el.innerHTML = '<div class="ber-ti" style="margin-bottom:.5rem">👥 Wer war beim Spiel dabei?</div>'
-    + '<div class="karte" style="padding:.75rem;margin-bottom:.625rem">'
-    + '<label style="display:flex;align-items:center;gap:.5rem;font-size:.875rem;font-weight:700;margin-bottom:.625rem">Spieltag <input id="spiel-anw-datum" type="date" value="' + datum + '" onchange="spielAnwesenheitDatumAend(this.value)" style="margin-left:auto;max-width:170px;padding:.4rem;border:1px solid var(--brd);border-radius:8px;background:var(--bg);color:var(--txt)"></label>'
-    + '<div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap"><button class="btn btn-out btn-sm" type="button" onclick="spielAnwesenheitAlle(true)">Alle auswählen</button><button class="btn btn-out btn-sm" type="button" onclick="spielAnwesenheitAlle(false)">Alle abwählen</button><span id="spiel-anw-count" style="margin-left:auto;align-self:center;font-size:.8125rem;color:var(--mut)">' + spielAnwAuswahl.size + ' von ' + S.spieler.length + ' dabei</span></div>'
-    + '<div style="display:flex;flex-direction:column;gap:.25rem">'
-    + S.spieler.map(sp => '<label style="display:flex;align-items:center;gap:.625rem;padding:.375rem .125rem;border-top:1px solid var(--brd);min-height:42px;cursor:pointer"><input type="checkbox" ' + (spielAnwAuswahl.has(sp.id) ? 'checked ' : '') + 'onchange="spielAnwesenheitToggle(\'' + sp.id + '\',this.checked)" style="width:21px;height:21px;flex-shrink:0">' + avatarHtml(sp.name, sp.foto, 26) + '<span style="flex:1;font-size:.875rem;font-weight:600">' + h(sp.name) + '</span></label>').join('')
-    + (S.spieler.length ? '' : '<p style="color:var(--mut);font-size:.8125rem">Bitte zuerst unter Mehr → Team Spieler hinzufügen.</p>')
-    + '</div><button class="btn btn-prim btn-full" style="margin-top:.75rem" type="button" onclick="spielAnwesenheitSpeichern()">💾 Spielanwesenheit speichern</button></div>'
-    + '<div style="font-size:.8125rem;font-weight:700;color:var(--mut);margin:.75rem 0 .375rem">Gespeicherte Spieltage</div>'
-    + (einheiten.length ? '<ul style="list-style:none;display:flex;flex-direction:column;gap:.375rem">' + einheiten.slice().sort((a,b)=>b.datum.localeCompare(a.datum)).map(e => '<li class="we-z" style="padding:.375rem .625rem"><button class="btn btn-out btn-sm" type="button" style="flex:1;text-align:left" onclick="spielAnwesenheitLaden(\'' + e.datum + '\')">' + h(datumAnzeige(e.datum)) + '</button><span style="font-size:.8125rem;color:var(--mut)">' + (e.spieler||[]).length + ' Spieler</span><button class="ib" type="button" aria-label="Spieltag löschen" onclick="spielAnwesenheitLoeschen(\'' + e.id + '\')">🗑️</button></li>').join('') + '</ul>' : '<p style="font-size:.8125rem;color:var(--mut)">Noch keine Spielanwesenheit gespeichert.</p>');
-}
-function spielAnwesenheitDatumAend(datum) {
-  spielAnwDatum = datum || datumIso(new Date());
-  const e = spielAnwesenheitEinheiten().find(x => x.datum === spielAnwDatum);
-  spielAnwAuswahl = new Set(e ? (e.spieler || []) : []);
-  spielAnwGeladenDatum = spielAnwDatum;
-  spielAnwesenheitR();
-}
-function spielAnwesenheitToggle(id, an) {
-  if (an) spielAnwAuswahl.add(id); else spielAnwAuswahl.delete(id);
-  const count = document.getElementById('spiel-anw-count');
-  if (count) count.textContent = spielAnwAuswahl.size + ' von ' + S.spieler.length + ' dabei';
-}
-function spielAnwesenheitAlle(an) {
-  spielAnwAuswahl = new Set(an ? S.spieler.map(sp => sp.id) : []);
-  spielAnwesenheitR();
-}
-function spielAnwesenheitLaden(datum) {
-  spielAnwDatum = datum;
-  const e = spielAnwesenheitEinheiten().find(x => x.datum === datum);
-  spielAnwAuswahl = new Set(e ? (e.spieler || []) : []);
-  spielAnwGeladenDatum = spielAnwDatum;
-  spielAnwesenheitR();
-}
-function spielAnwesenheitSpeichern() {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(spielAnwDatum || '')) { toastZ('Bitte einen Spieltag auswählen.', 'err'); return; }
-  const einheiten = spielAnwesenheitEinheiten();
-  const ids = S.spieler.filter(sp => spielAnwAuswahl.has(sp.id)).map(sp => sp.id);
-  const vorhanden = einheiten.find(e => e.datum === spielAnwDatum);
-  if (vorhanden) vorhanden.spieler = ids;
-  else einheiten.push({id:genId(), datum:spielAnwDatum, spieler:ids});
-  einheiten.sort((a,b)=>b.datum.localeCompare(a.datum));
-  speichern(); spielAnwesenheitR(); toastZ('✅ Spielanwesenheit gespeichert (' + ids.length + ' Spieler)', 'ok');
-}
-function spielAnwesenheitLoeschen(id) {
-  const e = spielAnwesenheitEinheiten().find(x => x.id === id);
-  if (!e) return;
-  bestaetigen('Spieltag löschen', 'Die Anwesenheit vom ' + datumAnzeige(e.datum) + ' wirklich löschen?', 'Löschen', () => {
-    S.spielAnwesenheit.einheiten = S.spielAnwesenheit.einheiten.filter(x => x.id !== id);
-    if (spielAnwDatum === e.datum) { spielAnwAuswahl = new Set(); spielAnwGeladenDatum = spielAnwDatum; }
-    speichern(); spielAnwesenheitR();
-  });
-}
-
 function spielTimerRender() {
   const el = document.getElementById('timer-panel');
   if (!el) return;
@@ -1955,6 +1881,7 @@ function dashboardSpielSpeichern(planId) {
   speichern();
   dbR();
   spielplanR();
+  coTrainerTeamAAutoSync();
   if (idx < 0) bestaetigen('Spielnoten', 'Möchtest du den Spielern jetzt Noten für dieses Spiel geben?', 'Noten vergeben', () => notenModalOeffnen(0));
 }
 
@@ -1967,6 +1894,7 @@ function dashboardSpielLoeschen(key) {
     speichern();
     dbR();
     spielplanR();
+    coTrainerTeamAAutoSync();
     toastZ('✅ Ergebnis aus Dashboard gelöscht', 'ok');
   });
 }
@@ -3094,7 +3022,7 @@ function spielModeSet(m) {
 function spielplanungR() {
   const el = document.getElementById('spielplanung-content');
   if (!el) return;
-  el.innerHTML = planungSpielAuswahlHtml()
+  el.innerHTML = planungSpielAuswahlHtml() + freigabeHtml()
     + '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:.875rem">'
     + '<button class="timer-quarter-btn' + (spielMode === 'planung' ? ' active' : '') + '" type="button" onclick="spielModeSet(\'planung\')">📋 Planung</button>'
     + '<button class="timer-quarter-btn' + (spielMode === 'aufstellung' ? ' active' : '') + '" type="button" onclick="spielModeSet(\'aufstellung\')">🧩 Aufstellung</button>'
@@ -3720,7 +3648,7 @@ function aufstellungR() {
     + '</div>'
     + '<div class="tr-ber" style="margin-top:.875rem;margin-bottom:0">'
     + '<div class="ber-ti" style="margin-bottom:.375rem">🤖 Co-Trainer</div>'
-    + '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">Überträgt nur die eindeutigen Spieler von Team A. Bei jedem Senden wird die bisherige Co-Trainer-Liste vollständig ersetzt; Viertel, Einsatzhäufigkeit und Team B werden nicht übertragen.</p>'
+    + '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">Überträgt die Spieler von Team A, den Freigabe-Status, das Spiel (Datum, Gegner, Heim/Auswärts, Ort) den ganzen Spielplan mit Ergebnissen und Torschützen und die Tabelle. Bei jedem Senden wird die bisherige Co-Trainer-Liste vollständig ersetzt; Viertel, Einsatzhäufigkeit und Team B werden nicht übertragen.</p>'
     + '<div style="display:flex;gap:.5rem;flex-wrap:wrap">'
     + '<button class="btn btn-prim btn-sm" type="button" onclick="coTrainerTeamASenden()">📤 Team A an Co-Trainer senden</button>'
     + '<button class="btn btn-out btn-sm" type="button" onclick="coTrainerOeffnen()">💬 Co-Trainer öffnen</button>'
@@ -3760,6 +3688,82 @@ function coTrainerTeamASpieler() {
     .filter(Boolean);
 }
 
+function planGegnerName(g) {
+  return String(g.unsereSeite === 'heim' ? g.auswaerts : g.heim || '').replace(/\s+U\d+.*$/i, '').trim();
+}
+
+// Gesamter Spielplan für den Bot, mit Ergebnissen der gespielten Spiele (aus Sicht der eigenen Mannschaft)
+function coTrainerSpielplan() {
+  const namen = coTrainerNamen();
+  const nurVor = einst().nurVornamen !== false;
+  const name = (id, n) => {
+    if (id && namen[id]) return namen[id];
+    const t = String(n || '').trim();
+    return nurVor ? t.split(/\s+/)[0] : t;
+  };
+  return planNachDatum(spielplanListe()).map(g => {
+    const e = planEintrag(g.id);
+    let erg = null;
+    if (e) {
+      const heimEigen = e.unsereSeite === 'heim';
+      erg = { wir: Number(heimEigen ? e.heim : e.auswaerts) || 0, gegner: Number(heimEigen ? e.auswaerts : e.heim) || 0 };
+    } else if (g.ergebnis) {
+      erg = g.unsereSeite === 'heim' ? { wir: g.ergebnis.heim, gegner: g.ergebnis.auswaerts } : { wir: g.ergebnis.auswaerts, gegner: g.ergebnis.heim };
+    }
+    // Eigene Torschützen (nur bei gespeicherten Matches), in zeitlicher Reihenfolge
+    const tore = e && Array.isArray(e.tore) ? e.tore.slice().sort((a, b) => (Number(a.zeitSek) || 0) - (Number(b.zeitSek) || 0))
+      .map(t => ({
+        spieler: name(t.spielerId, t.name) || 'unbekannt',
+        minute: Number.isFinite(Number(t.zeitSek)) && t.zeitSek !== null ? Math.max(0, Math.round(Number(t.zeitSek) / 60)) : null,
+        vorlage: t.vorlageId || t.vorlageName ? name(t.vorlageId, t.vorlageName) : ''
+      })) : [];
+    return { datum: g.datum, zeit: g.zeit || '', heimAuswaerts: g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts', gegner: planGegnerName(g), ort: g.ort || '', gespielt: !!erg, ergebnis: erg, tore };
+  });
+}
+
+// Ligatabelle für den Bot (Platz, Punkte, Tore usw.)
+function coTrainerTabelle() {
+  const T = S.tabelle || { zeilen: [], stand: '' };
+  const verein = String(vereinName() || '').trim().toLowerCase();
+  return {
+    stand: T.stand || '',
+    teams: (T.zeilen || []).map((z, i) => ({
+      platz: i + 1, mannschaft: String(z.name || '').replace(/\s+U\d+\b/i, '').trim(),
+      spiele: z.sp, siege: z.g, unentschieden: z.u, niederlagen: z.v,
+      toreFuer: z.tp, toreGegen: z.tg, differenz: z.tp - z.tg, punkte: z.g * 3 + z.u,
+      eigene: !!verein && String(z.name || '').toLowerCase().includes(verein)
+    }))
+  };
+}
+
+// Daten für den Bot: Spieler, Freigabe-Status, das zugehörige Spiel, der ganze Spielplan und die Tabelle
+function coTrainerPayload() {
+  const g = S.planungSpielId ? planSpiel(S.planungSpielId) : null;
+  const game = g ? {
+    datum: g.datum, zeit: g.zeit || '',
+    heimAuswaerts: g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts',
+    gegner: planGegnerName(g),
+    ort: g.ort || ''
+  } : null;
+  return { players: coTrainerTeamASpieler(), released: !!(S.spielplanung && S.spielplanung.freigegeben), game, schedule: coTrainerSpielplan(), table: coTrainerTabelle() };
+}
+
+// Aufstellung für die Eltern freigeben bzw. zurückziehen
+function aufstellungFreigabeUmschalten() {
+  if (!S.spielplanung) S.spielplanung = { viertel: 4, dauerMin: 15 };
+  S.spielplanung.freigegeben = !S.spielplanung.freigegeben;
+  speichern();
+  spielplanungR();
+  coTrainerTeamAAutoSync();
+  toastZ(S.spielplanung.freigegeben ? '✅ Aufstellung freigegeben' : '🔒 Freigabe zurückgezogen', 'ok');
+}
+
+function freigabeHtml() {
+  const frei = !!(S.spielplanung && S.spielplanung.freigegeben);
+  return '<button class="btn ' + (frei ? 'btn-prim' : 'btn-out') + ' btn-full" type="button" style="margin-bottom:.75rem" onclick="aufstellungFreigabeUmschalten()">'
+    + (frei ? '✅ Aufstellung freigegeben' : '🔒 Aufstellung noch nicht freigegeben') + '</button>';
+}
+
 function coTrainerStatus(text, fehler) {
   const el = document.getElementById('co-trainer-status');
   if (el) { el.textContent = text; el.style.color = fehler ? 'var(--err)' : 'var(--mut)'; }
@@ -3769,8 +3773,9 @@ function coTrainerStatus(text, fehler) {
 let coTrainerZuletzt = (() => { try { return localStorage.getItem('ebe_cotrainer_zuletzt'); } catch (_) { return null; } })();
 
 async function coTrainerCloudflareSync(manual = false) {
-  const spieler = coTrainerTeamASpieler();
-  const schluessel = JSON.stringify(spieler);
+  const payload = coTrainerPayload();
+  const spieler = payload.players;
+  const schluessel = JSON.stringify(payload);
   if (!manual) {
     if (navigator.onLine === false) return false;
     if (schluessel === coTrainerZuletzt) {
@@ -3786,7 +3791,7 @@ async function coTrainerCloudflareSync(manual = false) {
     const response = await fetch(CO_TRAINER_LINEUP_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ players: spieler }),
+      body: JSON.stringify(payload),
       cache: 'no-store'
     });
     if (!response.ok) {
@@ -3797,7 +3802,7 @@ async function coTrainerCloudflareSync(manual = false) {
     coTrainerZuletzt = schluessel;
     try { localStorage.setItem('ebe_cotrainer_zuletzt', schluessel); } catch (_) {}
     if (manual) {
-      coTrainerStatus('✅ ' + spieler.length + ' Spieler übertragen. Die bisherige Liste wurde ersetzt.');
+      coTrainerStatus('✅ ' + spieler.length + ' Spieler übertragen (' + (payload.released ? 'freigegeben' : 'noch nicht freigegeben') + ', ' + payload.schedule.length + ' Spiele im Spielplan). Die bisherige Liste wurde ersetzt.');
       toastZ('✅ Team-A-Liste an Co-Trainer gesendet', 'ok');
     } else {
       coTrainerStatus('✅ Team A automatisch synchronisiert (' + spieler.length + ' Spieler).');
@@ -4472,13 +4477,12 @@ function formSpeichern() {
 /* ===== NAVIGATION ===== */
 
 let aktiverTab = 'dashboard';
-let spielUnterpunkt = 'anwesenheit';
+let spielUnterpunkt = 'plan';
 let trainingUnterpunkt = 'anwesenheit';
 
 function spielUnterpunktWaehlen(k) {
   spielUnterpunkt = k;
   const bereiche = {
-    anwesenheit: document.getElementById('spiel-anwesenheit'),
     vergangen: document.getElementById('spiel-vergangen'),
     plan: document.getElementById('spiel-plan'),
     planung: document.getElementById('tab-spielplanung'),
@@ -4487,7 +4491,7 @@ function spielUnterpunktWaehlen(k) {
   Object.entries(bereiche).forEach(([key, el]) => { if (el) el.style.display = key === k ? '' : 'none'; });
   const nav = document.getElementById('spiel-sub-chips');
   if (nav) nav.innerHTML = '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:.75rem">'
-    + [{k:'anwesenheit',l:'👥 Anwesenheit'},{k:'plan',l:'📆 Spielplan'},{k:'planung',l:'📋 Spielplanung'},{k:'gegner',l:'🔍 Gegner-Analyse'},{k:'vergangen',l:'🗂️ Vergangene Spiele'}].map(x => '<button class="timer-quarter-btn' + (x.k === k ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="spielUnterpunktWaehlen(\'' + x.k + '\')">' + x.l + '</button>').join('') + '</div>';
+    + [{k:'plan',l:'📆 Spielplan'},{k:'planung',l:'📋 Spielplanung'},{k:'gegner',l:'🔍 Gegner-Analyse'},{k:'vergangen',l:'🗂️ Vergangene Spiele'}].map(x => '<button class="timer-quarter-btn' + (x.k === k ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="spielUnterpunktWaehlen(\'' + x.k + '\')">' + x.l + '</button>').join('') + '</div>';
 }
 
 function trainingUnterpunktWaehlen(k) {
@@ -4514,7 +4518,6 @@ function tabW(id) {
   if (sek) sek.classList.add('active');
 
   if (id === 'spiel') {
-    spielAnwesenheitR();
     spielplanR();
     spielplanungR();
     gegnerR();
@@ -5236,6 +5239,7 @@ function tabelleUebernehmen() {
   speichern();
   modalSch();
   dbR();
+  coTrainerTeamAAutoSync();
   toastZ('✅ Tabelle importiert', 'ok');
 }
 
@@ -5244,6 +5248,7 @@ function tabelleLoeschen() {
     S.tabelle = { zeilen: [], stand: '' };
     speichern();
     dbR();
+    coTrainerTeamAAutoSync();
   });
 }
 
@@ -5383,6 +5388,7 @@ function dashboardSpielBearbeitenSpeichern() {
   modalSch();
   dbR();
   torschuetzenR();
+  coTrainerTeamAAutoSync();
   toastZ('✅ Spiel aktualisiert', 'ok');
 }
 
@@ -6060,6 +6066,7 @@ function spielplanUebernehmen() {
   modalSch();
   dbR();
   spielplanR();
+  coTrainerTeamAAutoSync();
   toastZ('✅ Spielplan: ' + neu + ' neu, ' + akt + ' aktualisiert', 'ok');
 }
 
@@ -6099,6 +6106,7 @@ function planSpielSpeichern() {
   modalSch();
   dbR();
   spielplanR();
+  coTrainerTeamAAutoSync();
   toastZ('✅ Spiel gespeichert', 'ok');
 }
 
@@ -6111,6 +6119,7 @@ function planSpielLoeschen(id) {
     speichern();
     dbR();
     spielplanR();
+    coTrainerTeamAAutoSync();
   });
 }
 
