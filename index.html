@@ -1109,6 +1109,8 @@ function datenUebernehmen(d) {
   anwesenheitAusLetztemTraining();
   S.planungSpielId = d.planungSpielId || null;
   S.planungFrei = d.planungFrei || null;
+  S.adressen = (d.adressen && typeof d.adressen === 'object' && !Array.isArray(d.adressen)) ? d.adressen : {};
+  adressenAusSpielplan();
   if (S.planungSpielId && !S.spielplan.spiele.some(g => g.id === S.planungSpielId)) S.planungSpielId = null;
   delete S.gegner.tws; delete S.gegner.tw;
 }
@@ -3179,6 +3181,7 @@ function mehrMenueOeffnen() {
     + titel('Seiten')
     + eintrag('👥', 'Team verwalten', "mehrGehe('spieler')")
     + eintrag('🤖', 'Co-Trainer', 'coTrainerPanelOeffnen()')
+    + eintrag('📍', 'Adressen', 'adressenOeffnen()')
     + eigeneLinks
     + titel('Werkzeuge')
     + '<a class="btn btn-out btn-full" style="' + stil + '" href="' + h(dfbnetUrl()) + '" target="_blank" rel="noopener" onclick="modalSch()"><span style="font-size:1.25rem">📤</span>Ergebnis melden (DFBnet)</a>'
@@ -6136,8 +6139,8 @@ function spielplanUebernehmen() {
   let neu = 0, akt = 0;
   neueSpiele.forEach(g => {
     const x = liste.find(y => y.datum === g.datum && y.heim === g.heim && y.auswaerts === g.auswaerts);
-    if (x) { if (g.zeit) x.zeit = g.zeit; if (g.ergebnis) x.ergebnis = g.ergebnis; akt++; }
-    else { liste.push(Object.assign({ id: genId() }, g)); neu++; }
+    if (x) { if (g.zeit) x.zeit = g.zeit; if (g.ergebnis) x.ergebnis = g.ergebnis; if (!x.ort) { const a = adresseFuer(x.heim); if (a) x.ort = a; } akt++; }
+    else { const a = adresseFuer(g.heim); liste.push(Object.assign({ id: genId() }, g, a ? { ort: a } : {})); neu++; }
   });
   S.spielplan.spiele = planNachDatum(liste);
   S.spielplan.stand = new Date().toLocaleDateString('de-DE');
@@ -6152,18 +6155,19 @@ function spielplanUebernehmen() {
 /* --- Spiel von Hand anlegen / bearbeiten --- */
 function planSpielBearbeiten(id) {
   const g = id ? planSpiel(id) : null;
-  modal = { typ: 'planspiel', id: id || null, sterne: {} };
+  modal = { typ: 'planspiel', id: id || null, sterne: {}, ortAuto: '' };
   document.getElementById('modal-ti').textContent = g ? 'Spiel bearbeiten' : 'Spiel hinzufügen';
   const gegner = g ? (g.unsereSeite === 'heim' ? g.auswaerts : g.heim) : '';
   const stil = 'width:100%';
   document.getElementById('modal-body').innerHTML =
     '<div class="fg"><label for="ps-datum">Datum</label><input id="ps-datum" type="date" value="' + h(g ? g.datum : datumIso(new Date())) + '"></div>'
     + '<div class="fg"><label for="ps-zeit">Uhrzeit (optional)</label><input id="ps-zeit" type="time" value="' + h(g && g.zeit ? g.zeit : '') + '"></div>'
-    + '<div class="fg"><label for="ps-seite">Wir spielen</label><select id="ps-seite"><option value="heim"' + (!g || g.unsereSeite === 'heim' ? ' selected' : '') + '>Heim</option><option value="auswaerts"' + (g && g.unsereSeite === 'auswaerts' ? ' selected' : '') + '>Auswärts</option></select></div>'
-    + '<div class="fg"><label for="ps-gegner">Gegner</label><input id="ps-gegner" type="text" style="' + stil + '" value="' + h(gegner) + '" placeholder="z. B. TSV Poing U10" autocomplete="off"></div>'
+    + '<div class="fg"><label for="ps-seite">Wir spielen</label><select id="ps-seite" onchange="planOrtVorschlag()"><option value="heim"' + (!g || g.unsereSeite === 'heim' ? ' selected' : '') + '>Heim</option><option value="auswaerts"' + (g && g.unsereSeite === 'auswaerts' ? ' selected' : '') + '>Auswärts</option></select></div>'
+    + '<div class="fg"><label for="ps-gegner">Gegner</label><input id="ps-gegner" type="text" style="' + stil + '" value="' + h(gegner) + '" placeholder="z. B. TSV Poing U10" autocomplete="off" oninput="planOrtVorschlag()"></div>'
     + '<div class="fg"><label for="ps-ort">Spielort / Adresse (optional)</label><input id="ps-ort" type="text" style="' + stil + '" value="' + h(g && g.ort ? g.ort : '') + '" placeholder="z. B. Sportanlage, Straße, Ort" autocomplete="off"></div>';
   modalFooterSichtbar(true);
   document.getElementById('modal-ov').classList.remove('hidden');
+  if (!g) planOrtVorschlag();   // neues Spiel: eigene Adresse vorschlagen
 }
 
 function planSpielSpeichern() {
@@ -6173,13 +6177,14 @@ function planSpielSpeichern() {
   if (!gegner) { document.getElementById('ps-gegner')?.classList.add('err'); toastZ('Bitte den Gegner eingeben.', 'err'); return; }
   const seite = document.getElementById('ps-seite')?.value === 'auswaerts' ? 'auswaerts' : 'heim';
   const zeit = document.getElementById('ps-zeit')?.value || '';
-  const v = String(vereinName() || '').trim().toLowerCase();
-  const eigen = BEKANNTE_TEAMS.find(n => v && n.toLowerCase().includes(v)) || vereinName() || 'EBE';
-  const ort = (document.getElementById('ps-ort')?.value || '').trim();
+  const eigen = planEigenerName();
+  let ort = (document.getElementById('ps-ort')?.value || '').trim();
+  if (!ort) ort = adresseFuer(seite === 'heim' ? eigen : gegner);   // unbekannt? dann aus der Datenbank holen
   const felder = { datum, zeit, ort, unsereSeite: seite, heim: seite === 'heim' ? eigen : gegner, auswaerts: seite === 'heim' ? gegner : eigen };
   const liste = spielplanListe();
   if (modal.id) { const g = planSpiel(modal.id); if (g) Object.assign(g, felder); }
   else liste.push(Object.assign({ id: genId() }, felder));
+  adresseMerken(felder.heim, ort);   // Adresse der Heimmannschaft in der Datenbank merken
   S.spielplan.spiele = planNachDatum(liste);
   speichern();
   modalSch();
@@ -6263,6 +6268,112 @@ function matchPlanZeileHtml() {
     : '📆 Spiel aus Spielplan zuweisen';
   return '<button class="btn ' + (pg ? 'btn-out' : 'btn-acc') + ' btn-sm btn-full" type="button" style="margin-bottom:.625rem;justify-content:space-between" onclick="planWahlOeffnen(\'zuweisen\')">'
     + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis">' + text + '</span><span>✏️</span></button>';
+}
+
+/* --- Adress-Datenbank: Spielort je Mannschaft (Heimspielstätte) --- */
+function adressKey(name) {
+  return teamNorm(String(name || '').replace(/\s+U\d+.*$/i, ''));
+}
+function adressDB() {
+  if (!S.adressen || typeof S.adressen !== 'object' || Array.isArray(S.adressen)) S.adressen = {};
+  return S.adressen;
+}
+function adresseFuer(name) {
+  const k = adressKey(name);
+  const e = k ? adressDB()[k] : null;
+  return e && e.ort ? e.ort : '';
+}
+function adresseMerken(name, ort) {
+  const k = adressKey(name), o = String(ort || '').trim();
+  if (!k || !o) return;
+  adressDB()[k] = { name: String(name).replace(/\s+U\d+.*$/i, '').trim(), ort: o };
+}
+function planEigenerName() {
+  const v = String(vereinName() || '').trim().toLowerCase();
+  return BEKANNTE_TEAMS.find(n => v && n.toLowerCase().includes(v)) || vereinName() || 'EBE';
+}
+// Bereits eingetragene Spielorte aus dem Spielplan in die Datenbank übernehmen (einmalig beim Laden)
+function adressenAusSpielplan() {
+  spielplanListe().forEach(g => { if (g.ort && g.heim && !adresseFuer(g.heim)) adresseMerken(g.heim, g.ort); });
+}
+// Spiele ohne Spielort bekommen die Adresse der Heimmannschaft aus der Datenbank
+function adressenAufSpieleAnwenden() {
+  spielplanListe().forEach(g => { if (!g.ort) { const a = adresseFuer(g.heim); if (a) g.ort = a; } });
+}
+
+// Alle bekannten Mannschaften (Datenbank + Gegner aus dem Spielplan)
+function adressenListe() {
+  const m = {};
+  Object.entries(adressDB()).forEach(([k, e]) => { m[k] = { key: k, name: e.name || k, ort: e.ort || '' }; });
+  spielplanListe().forEach(g => [g.heim, g.auswaerts].forEach(n => {
+    const k = adressKey(n);
+    if (k && !m[k]) m[k] = { key: k, name: String(n).replace(/\s+U\d+.*$/i, '').trim(), ort: '' };
+  }));
+  return Object.values(m).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+}
+
+function adressenOeffnen() {
+  modal = { typ: 'adressen', id: null, sterne: {} };
+  document.getElementById('modal-ti').textContent = '📍 Adressen';
+  const liste = adressenListe();
+  const inp = 'width:100%;padding:.5rem .625rem;border:2px solid var(--brd);border-radius:var(--rs);font-size:.9375rem;background:var(--surf);color:var(--txt)';
+  document.getElementById('modal-body').innerHTML =
+    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.75rem">Spielort (Heimspielstätte) je Mannschaft. Neue Spiele übernehmen die Adresse automatisch, eingetragene Adressen werden hier gemerkt. Änderungen gelten für künftige Spiele und für Spiele ohne Adresse.</p>'
+    + (liste.length ? liste.map(x =>
+        '<div style="padding:.5rem 0;border-bottom:1px solid var(--brd)"><div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem"><span style="flex:1;min-width:0;font-weight:700;font-size:.875rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + h(x.name) + '</span>'
+        + (adressDB()[x.key] ? '<button class="ib" type="button" aria-label="Adresse löschen" style="width:32px;height:32px;font-size:.85rem" onclick="adresseLoeschen(\'' + h(x.key) + '\')">🗑️</button>' : '') + '</div>'
+        + '<input type="text" style="' + inp + '" value="' + h(x.ort) + '" placeholder="Adresse eintragen" autocomplete="off" onchange="adresseSetzen(\'' + h(x.key) + '\', this.value)"></div>').join('')
+      : '<p style="color:var(--mut);font-size:.8125rem">Noch keine Mannschaften. Importiere den Spielplan oder füge eine hinzu.</p>')
+    + '<div style="font-size:.8125rem;font-weight:700;color:var(--mut);margin:.875rem 0 .375rem">Mannschaft hinzufügen</div>'
+    + '<input id="adr-neu-name" type="text" style="' + inp + ';margin-bottom:.375rem" placeholder="Mannschaft, z. B. TSV Poing" autocomplete="off">'
+    + '<input id="adr-neu-ort" type="text" style="' + inp + ';margin-bottom:.5rem" placeholder="Adresse" autocomplete="off">'
+    + '<div style="display:flex;gap:.5rem"><button class="btn btn-prim" type="button" style="flex:1" onclick="adresseNeu()">＋ Hinzufügen</button>'
+    + '<button class="btn btn-out" type="button" style="flex:1" onclick="modalSch()">Schließen</button></div>';
+  modalFooterSichtbar(false);
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+
+function adresseSetzen(key, wert) {
+  const e = adressenListe().find(x => x.key === key);
+  const ort = String(wert || '').trim();
+  if (!e) return;
+  if (ort) adressDB()[key] = { name: e.name, ort }; else delete adressDB()[key];
+  adressenAufSpieleAnwenden();
+  speichern();
+  spielplanR();
+  dbR();
+  toastZ(ort ? '✅ Adresse gespeichert' : 'Adresse entfernt', 'ok');
+}
+
+function adresseLoeschen(key) {
+  delete adressDB()[key];
+  speichern();
+  adressenOeffnen();
+}
+
+function adresseNeu() {
+  const name = (document.getElementById('adr-neu-name')?.value || '').trim();
+  const ort = (document.getElementById('adr-neu-ort')?.value || '').trim();
+  if (!name || !ort) { toastZ('Bitte Mannschaft und Adresse eingeben.', 'err'); return; }
+  adresseMerken(name, ort);
+  adressenAufSpieleAnwenden();
+  speichern();
+  spielplanR();
+  adressenOeffnen();
+  toastZ('✅ Adresse gespeichert', 'ok');
+}
+
+// Im Fenster „Spiel hinzufügen“: Adresse automatisch vorschlagen, solange sie nicht von Hand geändert wurde
+function planOrtVorschlag() {
+  if (modal?.typ !== 'planspiel') return;
+  const el = document.getElementById('ps-ort');
+  if (!el) return;
+  if (el.value.trim() && el.value !== modal.ortAuto) return;
+  const seite = document.getElementById('ps-seite')?.value === 'auswaerts' ? 'auswaerts' : 'heim';
+  const gegner = (document.getElementById('ps-gegner')?.value || '').trim();
+  const a = adresseFuer(seite === 'heim' ? planEigenerName() : gegner);
+  el.value = a;
+  modal.ortAuto = a;
 }
 
 /* --- Planung / Aufstellung je Spiel --- */
