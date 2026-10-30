@@ -1056,6 +1056,7 @@ const spielTimer = {
 /* ===== PERSISTENZ ===== */
 
 function speichern() {
+  planungImSpielAblegen();
   try {
     localStorage.setItem(SK, JSON.stringify(S));
     return true;
@@ -1099,6 +1100,9 @@ function datenUebernehmen(d) {
   if (!S.aufstellung.lineup || typeof S.aufstellung.lineup !== 'object') S.aufstellung.lineup = {A:[],B:[]};
   normalizeGegnerState();
   anwesenheitAusLetztemTraining();
+  S.planungSpielId = d.planungSpielId || null;
+  S.planungFrei = d.planungFrei || null;
+  if (S.planungSpielId && !S.spielplan.spiele.some(g => g.id === S.planungSpielId)) S.planungSpielId = null;
   delete S.gegner.tws; delete S.gegner.tw;
 }
 
@@ -3090,8 +3094,8 @@ function spielModeSet(m) {
 function spielplanungR() {
   const el = document.getElementById('spielplanung-content');
   if (!el) return;
-  el.innerHTML =
-    '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:.875rem">'
+  el.innerHTML = planungSpielAuswahlHtml()
+    + '<div class="timer-quarter-row" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:.875rem">'
     + '<button class="timer-quarter-btn' + (spielMode === 'planung' ? ' active' : '') + '" type="button" onclick="spielModeSet(\'planung\')">📋 Planung</button>'
     + '<button class="timer-quarter-btn' + (spielMode === 'aufstellung' ? ' active' : '') + '" type="button" onclick="spielModeSet(\'aufstellung\')">🧩 Aufstellung</button>'
     + '</div><div id="sp-sub"></div>';
@@ -3374,6 +3378,7 @@ function einstellungenSpeichern() {
   if (vereinGeaendert) {
     // Anderer Verein: Spielplan gehört zur alten Mannschaft und wird gelöscht
     S.spielplan = { spiele: [], stand: '' };
+    S.planungSpielId = null;
     if (S.spielstand) delete S.spielstand.planId;
   }
   speichern();
@@ -3436,7 +3441,8 @@ function tonUmschalten() {
 }
 
 // Aufstellung für Team + Viertel: erst die selbst erstellte, sonst der automatische Einsatzplan
-function matchAufstellungDaten(team, q) {
+function matchAufstellungDaten(team, q, arbeit) {
+  if (!arbeit && !planungPasstZumMatch()) return null;   // geöffnete Planung gehört zu einem anderen Spiel
   const A = S.aufstellung;
   const manuell = A && A.lineup && Array.isArray(A.lineup[team]) && Array.isArray(A.lineup[team][q]) ? A.lineup[team][q] : null;
   if (manuell && manuell.some(Boolean)) return { row: manuell.slice(0, 7), quelle: 'Aufstellung' };
@@ -3535,7 +3541,9 @@ function matchAufstellungR() {
         + (bank.length ? '<div style="font-size:.8125rem;margin-top:.5rem"><b>🪑 Bank:</b> ' + bank.map(x => h(x.name)).join(', ') + '</div>' : '')
         + (wechselText ? '<div style="font-size:.8125rem;margin-top:.375rem"><b>🔄 ' + h(wechselText) + '</b></div>' : '');
     } else {
-      body += '<p style="color:var(--mut);font-size:.8125rem">Für V' + (q + 1) + ' (Team ' + team + ') gibt es noch keine Aufstellung. Erstelle sie im Reiter „Spiele“.</p>';
+      body += !planungPasstZumMatch()
+        ? '<p style="color:var(--mut);font-size:.8125rem;margin-bottom:.5rem">Im Reiter „Spiel“ ist die Planung für ein anderes Spiel geöffnet.</p><button class="btn btn-acc btn-sm" type="button" onclick="planungSpielWaehlen(\'' + S.spielstand.planId + '\')">Planung des zugewiesenen Spiels laden</button>'
+        : '<p style="color:var(--mut);font-size:.8125rem">Für V' + (q + 1) + ' (Team ' + team + ') gibt es noch keine Aufstellung. Erstelle sie im Reiter „Spiele“.</p>';
     }
   }
 
@@ -3740,7 +3748,7 @@ function coTrainerTeamASpieler() {
   const viertel = Math.max(1, Math.min(8, Number(S.spielplanung && S.spielplanung.viertel) || 4));
   for (let q = 0; q < viertel; q++) {
     // Nutzt dieselbe Priorität wie die Match-Anzeige: manuelle Team-A-Aufstellung, sonst Einsatzplan.
-    const daten = matchAufstellungDaten('A', q);
+    const daten = matchAufstellungDaten('A', q, true);
     if (daten && Array.isArray(daten.row)) daten.row.filter(Boolean).forEach(id => ids.add(String(id)));
   }
   // Nur IDs auflösen, die tatsächlich zu einem Spieler in der EbeApp gehören.
@@ -4803,7 +4811,7 @@ function spielerStatistik(id, name) {
   const anzahlV = (S.spielplanung && S.spielplanung.viertel) || 4;
   ['A', 'B'].forEach(team => {
     for (let q = 0; q < anzahlV; q++) {
-      const d = matchAufstellungDaten(team, q);
+      const d = matchAufstellungDaten(team, q, true);
       if (d && d.row.includes(id)) viertel++;
     }
   });
@@ -5871,6 +5879,11 @@ function planTeamsText(g) {
   const r = g.unsereSeite === 'heim' ? planKurz(g.auswaerts) : eigenKurz();
   return h(l) + ' - ' + h(r);
 }
+// Spielort als Link in die Karten-App
+function planOrtHtml(g) {
+  if (!g.ort) return '';
+  return '<div style="margin-top:.25rem;font-size:.75rem"><a href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(g.ort) + '" target="_blank" rel="noopener" style="color:var(--sec);text-decoration:none">📍 ' + h(g.ort) + '</a></div>';
+}
 function planDatumText(g) { return datumAnzeige(g.datum) + (g.zeit ? ' · ' + g.zeit : ''); }
 
 /* --- Text aus dem Spielplan (PDF-Text) in Spiele umwandeln --- */
@@ -6061,7 +6074,8 @@ function planSpielBearbeiten(id) {
     '<div class="fg"><label for="ps-datum">Datum</label><input id="ps-datum" type="date" value="' + h(g ? g.datum : datumIso(new Date())) + '"></div>'
     + '<div class="fg"><label for="ps-zeit">Uhrzeit (optional)</label><input id="ps-zeit" type="time" value="' + h(g && g.zeit ? g.zeit : '') + '"></div>'
     + '<div class="fg"><label for="ps-seite">Wir spielen</label><select id="ps-seite"><option value="heim"' + (!g || g.unsereSeite === 'heim' ? ' selected' : '') + '>Heim</option><option value="auswaerts"' + (g && g.unsereSeite === 'auswaerts' ? ' selected' : '') + '>Auswärts</option></select></div>'
-    + '<div class="fg"><label for="ps-gegner">Gegner</label><input id="ps-gegner" type="text" style="' + stil + '" value="' + h(gegner) + '" placeholder="z. B. TSV Poing U10" autocomplete="off"></div>';
+    + '<div class="fg"><label for="ps-gegner">Gegner</label><input id="ps-gegner" type="text" style="' + stil + '" value="' + h(gegner) + '" placeholder="z. B. TSV Poing U10" autocomplete="off"></div>'
+    + '<div class="fg"><label for="ps-ort">Spielort / Adresse (optional)</label><input id="ps-ort" type="text" style="' + stil + '" value="' + h(g && g.ort ? g.ort : '') + '" placeholder="z. B. Sportanlage, Straße, Ort" autocomplete="off"></div>';
   modalFooterSichtbar(true);
   document.getElementById('modal-ov').classList.remove('hidden');
 }
@@ -6075,7 +6089,8 @@ function planSpielSpeichern() {
   const zeit = document.getElementById('ps-zeit')?.value || '';
   const v = String(vereinName() || '').trim().toLowerCase();
   const eigen = BEKANNTE_TEAMS.find(n => v && n.toLowerCase().includes(v)) || vereinName() || 'EBE';
-  const felder = { datum, zeit, unsereSeite: seite, heim: seite === 'heim' ? eigen : gegner, auswaerts: seite === 'heim' ? gegner : eigen };
+  const ort = (document.getElementById('ps-ort')?.value || '').trim();
+  const felder = { datum, zeit, ort, unsereSeite: seite, heim: seite === 'heim' ? eigen : gegner, auswaerts: seite === 'heim' ? gegner : eigen };
   const liste = spielplanListe();
   if (modal.id) { const g = planSpiel(modal.id); if (g) Object.assign(g, felder); }
   else liste.push(Object.assign({ id: genId() }, felder));
@@ -6092,6 +6107,7 @@ function planSpielLoeschen(id) {
   if (!g) return;
   bestaetigen('Spiel löschen', 'Das Spiel vom ' + datumAnzeige(g.datum) + ' aus dem Spielplan löschen?' + (planEintrag(id) ? ' Das gespeicherte Ergebnis bleibt erhalten.' : ''), 'Löschen', () => {
     S.spielplan.spiele = S.spielplan.spiele.filter(x => x.id !== id);
+    if (S.planungSpielId === id) S.planungSpielId = null;
     speichern();
     dbR();
     spielplanR();
@@ -6147,6 +6163,7 @@ function matchPlanZuweisen(id) {
   S.spielstand.planId = pg.id;
   setGegnerCode(gegnerCodeAusName(pg.unsereSeite === 'heim' ? pg.auswaerts : pg.heim), false);
   if (S.spielstand.unsereMannschaft !== pg.unsereSeite) spielstandSeiteWechseln(pg.unsereSeite);
+  if (S.planungSpielId !== pg.id) planungSpielWaehlen(pg.id);   // Aufstellung dieses Spiels laden
   speichern(); dbR();
   toastZ('✅ Spiel zugewiesen: ' + (pg.unsereSeite === 'heim' ? 'Heim' : 'Auswärts'), 'ok');
 }
@@ -6158,6 +6175,104 @@ function matchPlanZeileHtml() {
     : '📆 Spiel aus Spielplan zuweisen';
   return '<button class="btn ' + (pg ? 'btn-out' : 'btn-acc') + ' btn-sm btn-full" type="button" style="margin-bottom:.625rem;justify-content:space-between" onclick="planWahlOeffnen(\'zuweisen\')">'
     + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis">' + text + '</span><span>✏️</span></button>';
+}
+
+/* --- Planung / Aufstellung je Spiel --- */
+// Arbeitsstand = S.spieler[].verfuegbarWE/spielteam + S.spielplanung + S.aufstellung.
+// Er gehört zum Spiel S.planungSpielId (null = freie Planung ohne Spiel) und wird bei jedem Speichern im Spiel abgelegt.
+function planungSnapshot() {
+  const verf = {};
+  S.spieler.forEach(s => { verf[s.id] = { v: !!s.verfuegbarWE, t: s.spielteam || null }; });
+  const A = S.aufstellung || {};
+  return JSON.parse(JSON.stringify({
+    verf,
+    spielplanung: S.spielplanung || {},
+    aufstellung: { formation: A.formation || '2-3-1', lineup: A.lineup || { A: [], B: [] } }
+  }));
+}
+
+function planungImSpielAblegen() {
+  try {
+    if (!Array.isArray(S.spieler) || !S.spielplan) return;
+    const snap = planungSnapshot();
+    if (S.planungSpielId) {
+      const g = planSpiel(S.planungSpielId);
+      if (g) g.planung = snap; else S.planungSpielId = null;
+    }
+    if (!S.planungSpielId) S.planungFrei = snap;
+  } catch (_) {}
+}
+
+function planungAnwenden(snap) {
+  const alt = S.spielplanung || {};
+  const A = S.aufstellung || {};
+  S.spieler.forEach(s => {
+    const v = snap && snap.verf && snap.verf[s.id];
+    s.verfuegbarWE = !!(v && v.v);
+    s.spielteam = v ? v.t : null;
+  });
+  const kopie = o => JSON.parse(JSON.stringify(o));
+  S.spielplanung = snap && snap.spielplanung
+    ? Object.assign({ viertel: 4, dauerMin: 15, lineupA: [], lineupB: [] }, kopie(snap.spielplanung))
+    : { viertel: alt.viertel || 4, dauerMin: alt.dauerMin || 15, lineupA: [], lineupB: [], gk1A: null, gk1B: null };
+  S.aufstellung = {
+    team: A.team || 'A', q: 0,
+    formation: (snap && snap.aufstellung && snap.aufstellung.formation) || A.formation || '2-3-1',
+    lineup: snap && snap.aufstellung && snap.aufstellung.lineup ? kopie(snap.aufstellung.lineup) : { A: [], B: [] }
+  };
+}
+
+function planungHatLineup(snap) {
+  if (!snap) return false;
+  const sp = snap.spielplanung || {};
+  if ((sp.lineupA && sp.lineupA.length) || (sp.lineupB && sp.lineupB.length)) return true;
+  const l = (snap.aufstellung && snap.aufstellung.lineup) || {};
+  return ['A', 'B'].some(t => (l[t] || []).some(r => Array.isArray(r) && r.some(Boolean)));
+}
+
+function planungSpielWaehlen(id) {
+  const neu = id && planSpiel(id) ? id : null;
+  if (neu === (S.planungSpielId || null)) { spielplanungR(); return; }
+  planungImSpielAblegen();
+  S.planungSpielId = neu;
+  planungAnwenden(neu ? planSpiel(neu).planung : S.planungFrei);
+  einsatzPrevQ = -1;
+  speichern();
+  spielplanungR();
+  matchAufstellungR();
+  dbR();
+  toastZ(neu ? '✅ Planung für dieses Spiel geöffnet' : 'Freie Planung geöffnet', 'ok');
+}
+
+function planungOeffnen(id) {
+  planungSpielWaehlen(id);
+  spielUnterpunktWaehlen('planung');
+}
+
+// Auswahl oben in der Spielplanung: nächstes, übernächstes … Spiel
+function planungSpielAuswahlHtml() {
+  const liste = planOffen();
+  const aktiv = S.planungSpielId ? planSpiel(S.planungSpielId) : null;
+  if (!liste.length && !aktiv) return '';
+  const opt = (g, i) => {
+    const gegner = planKurz(g.unsereSeite === 'heim' ? g.auswaerts : g.heim);
+    const lb = i === 0 ? 'Nächstes Spiel' : i === 1 ? 'Übernächstes Spiel' : (i + 1) + '. nächstes Spiel';
+    return '<option value="' + g.id + '"' + (aktiv && aktiv.id === g.id ? ' selected' : '') + '>' + h((i >= 0 ? lb + ': ' : '') + datumAnzeige(g.datum) + ' · ' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + ' · ' + gegner) + '</option>';
+  };
+  let opts = '<option value=""' + (!aktiv ? ' selected' : '') + '>— freie Planung (kein bestimmtes Spiel) —</option>';
+  const ids = new Set(liste.map(g => g.id));
+  if (aktiv && !ids.has(aktiv.id)) opts += opt(aktiv, -1);
+  opts += liste.map((g, i) => opt(g, i)).join('');
+  return '<div class="fg" style="margin-bottom:.75rem"><label for="planung-spiel">📆 Planung für</label>'
+    + '<select id="planung-spiel" onchange="planungSpielWaehlen(this.value)">' + opts + '</select>'
+    + (aktiv ? '<div style="font-size:.75rem;color:var(--mut);margin-top:.25rem">' + planTeamsText(aktiv) + (aktiv.ort ? ' · 📍 ' + h(aktiv.ort) : '') + '</div>' : '')
+    + '</div>';
+}
+
+// Passt die geöffnete Planung zum im Match zugewiesenen Spiel?
+function planungPasstZumMatch() {
+  const pid = S.spielstand && S.spielstand.planId;
+  return !(pid && planSpiel(pid) && pid !== S.planungSpielId);
 }
 
 /* --- Anzeige: Dashboard (offene Spiele) und Spiel → Spielplan --- */
@@ -6174,7 +6289,7 @@ function offeneSpieleR() {
     + '<div class="db-match-list">' + offen.slice(0, dbAlleOffen ? offen.length : LIMIT).map(g =>
       '<div class="db-match-row"><div class="db-match-head"><span class="db-match-side">' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + '</span>'
       + '<span class="db-match-date">' + h(planDatumText(g)) + '</span></div>'
-      + '<div class="db-match-body"><span class="db-match-teams">' + planTeamsText(g) + '</span></div></div>').join('') + '</div>'
+      + '<div class="db-match-body"><span class="db-match-teams">' + planTeamsText(g) + '</span></div>' + planOrtHtml(g) + '</div>').join('') + '</div>'
     + (offen.length > LIMIT ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-bottom:.9rem" onclick="dbOffenUmschalten()">' + (dbAlleOffen ? 'Weniger anzeigen' : 'Alle ' + offen.length + ' offenen Spiele anzeigen') + '</button>' : '');
 }
 
@@ -6194,9 +6309,11 @@ function spielplanR() {
     const rechts = e ? '✅ ' + e.heim + ' - ' + e.auswaerts : (g.ergebnis ? g.ergebnis.heim + ' - ' + g.ergebnis.auswaerts : 'offen');
     return '<div class="db-match-row' + klasse + '"><div class="db-match-head"><span class="db-match-side">' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + '</span>'
       + '<div class="db-match-head-right"><span class="db-match-date">' + h(planDatumText(g)) + '</span>'
+      + '<button class="ib edit" type="button" onclick="planungOeffnen(\'' + g.id + '\')" aria-label="Aufstellung planen" style="width:28px;height:28px;font-size:.8rem">🧩</button>'
       + '<button class="ib edit" type="button" onclick="planSpielBearbeiten(\'' + g.id + '\')" aria-label="Spiel bearbeiten" style="width:28px;height:28px;font-size:.8rem">✏️</button>'
       + '<button class="ib" type="button" onclick="planSpielLoeschen(\'' + g.id + '\')" aria-label="Spiel löschen" style="width:28px;height:28px;font-size:.8rem">🗑️</button></div></div>'
-      + '<div class="db-match-body"><span class="db-match-teams">' + planTeamsText(g) + '</span><span class="db-match-score" style="font-size:.9rem">' + h(rechts) + '</span></div></div>';
+      + '<div class="db-match-body"><span class="db-match-teams">' + planTeamsText(g) + '</span><span class="db-match-score" style="font-size:.9rem">' + h(rechts) + '</span></div>' + planOrtHtml(g)
+      + (planungHatLineup(g.id === S.planungSpielId ? planungSnapshot() : g.planung) ? '<div style="font-size:.6875rem;color:var(--ok);margin-top:.25rem">🧩 Aufstellung geplant</div>' : '') + '</div>';
   }).join('') + '</div>';
 }
 
