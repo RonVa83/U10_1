@@ -3170,6 +3170,7 @@ function mehrMenueOeffnen() {
     '<div style="display:flex;flex-direction:column;gap:.5rem">'
     + titel('Seiten')
     + eintrag('👥', 'Team verwalten', "mehrGehe('spieler')")
+    + eintrag('🤖', 'Co-Trainer', 'coTrainerPanelOeffnen()')
     + eigeneLinks
     + titel('Werkzeuge')
     + '<a class="btn btn-out btn-full" style="' + stil + '" href="' + h(dfbnetUrl()) + '" target="_blank" rel="noopener" onclick="modalSch()"><span style="font-size:1.25rem">📤</span>Ergebnis melden (DFBnet)</a>'
@@ -3645,14 +3646,6 @@ function aufstellungR() {
     + '<button class="btn btn-acc btn-sm" type="button" onclick="aufstellungVorschlag()">✨ Vorschlag</button>'
     + '<button class="btn btn-out btn-sm" type="button" onclick="aufstellungAusEinsatz()">↩ Aus Einsatzplan</button>'
     + '<button class="btn btn-out btn-sm" type="button" style="color:var(--err);border-color:var(--err)" onclick="aufstellungLeeren()">🗑 Viertel leeren</button>'
-    + '</div>'
-    + '<div class="tr-ber" style="margin-top:.875rem;margin-bottom:0">'
-    + '<div class="ber-ti" style="margin-bottom:.375rem">🤖 Co-Trainer</div>'
-    + '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">Überträgt die Spieler von Team A, den Freigabe-Status, das Spiel (Datum, Gegner, Heim/Auswärts, Ort) den ganzen Spielplan mit Ergebnissen und Torschützen und die Tabelle. Bei jedem Senden wird die bisherige Co-Trainer-Liste vollständig ersetzt; Viertel, Einsatzhäufigkeit und Team B werden nicht übertragen.</p>'
-    + '<div style="display:flex;gap:.5rem;flex-wrap:wrap">'
-    + '<button class="btn btn-prim btn-sm" type="button" onclick="coTrainerTeamASenden()">📤 Team A an Co-Trainer senden</button>'
-    + '<button class="btn btn-out btn-sm" type="button" onclick="coTrainerOeffnen()">💬 Co-Trainer öffnen</button>'
-    + '</div><div id="co-trainer-status" role="status" aria-live="polite" style="font-size:.75rem;color:var(--mut);margin-top:.5rem"></div>'
     + '</div>';
 }
 
@@ -3756,12 +3749,38 @@ function aufstellungFreigabeUmschalten() {
   spielplanungR();
   coTrainerTeamAAutoSync();
   toastZ(S.spielplanung.freigegeben ? '✅ Aufstellung freigegeben' : '🔒 Freigabe zurückgezogen', 'ok');
+  if (modal && modal.typ === 'cotrainerpanel') coTrainerPanelOeffnen();
 }
 
 function freigabeHtml() {
   const frei = !!(S.spielplanung && S.spielplanung.freigegeben);
   return '<button class="btn ' + (frei ? 'btn-prim' : 'btn-out') + ' btn-full" type="button" style="margin-bottom:.75rem" onclick="aufstellungFreigabeUmschalten()">'
     + (frei ? '✅ Aufstellung freigegeben' : '🔒 Aufstellung noch nicht freigegeben') + '</button>';
+}
+
+// Co-Trainer-Bereich im Mehr-Menü
+function coTrainerPanelOeffnen() {
+  modal = { typ: 'cotrainerpanel', id: null, sterne: {} };
+  const p = coTrainerPayload();
+  const g = S.planungSpielId ? planSpiel(S.planungSpielId) : null;
+  const zeile = (k, v) => '<div style="display:flex;justify-content:space-between;gap:.5rem;font-size:.8125rem;padding:.25rem 0;border-bottom:1px solid var(--brd)"><span style="color:var(--mut)">' + k + '</span><b style="text-align:right">' + v + '</b></div>';
+  document.getElementById('modal-ti').textContent = '🤖 Co-Trainer';
+  document.getElementById('modal-body').innerHTML =
+    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.75rem">Überträgt die Spieler von Team A, den Freigabe-Status, das Spiel (Datum, Gegner, Heim/Auswärts, Ort), den ganzen Spielplan mit Ergebnissen und Torschützen und die Tabelle. Bei jedem Senden wird die bisherige Co-Trainer-Liste vollständig ersetzt.</p>'
+    + '<div style="margin-bottom:.875rem">'
+    + zeile('Planung für', g ? planTeamsText(g) + ' · ' + h(datumAnzeige(g.datum)) : 'freie Planung')
+    + zeile('Team A', p.players.length + ' Spieler')
+    + zeile('Spielplan', p.schedule.length + ' Spiele')
+    + zeile('Tabelle', p.table.teams.length ? p.table.teams.length + ' Mannschaften' : 'nicht importiert')
+    + '</div>'
+    + freigabeHtml()
+    + '<div style="display:flex;flex-direction:column;gap:.5rem">'
+    + '<button class="btn btn-prim btn-full" type="button" onclick="coTrainerTeamASenden()">📤 Team A an Co-Trainer senden</button>'
+    + '<button class="btn btn-out btn-full" type="button" onclick="coTrainerOeffnen()">💬 Co-Trainer öffnen</button>'
+    + '<button class="btn btn-out btn-full" type="button" onclick="modalSch()">Schließen</button>'
+    + '</div><div id="co-trainer-status" role="status" aria-live="polite" style="font-size:.75rem;color:var(--mut);margin-top:.5rem"></div>';
+  modalFooterSichtbar(false);
+  document.getElementById('modal-ov').classList.remove('hidden');
 }
 
 function coTrainerStatus(text, fehler) {
