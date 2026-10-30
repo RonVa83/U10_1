@@ -1111,6 +1111,7 @@ function datenUebernehmen(d) {
   S.planungFrei = d.planungFrei || null;
   S.adressen = (d.adressen && typeof d.adressen === 'object' && !Array.isArray(d.adressen)) ? d.adressen : {};
   adressenAusSpielplan();
+  aufgabenSicherstellen();
   if (S.planungSpielId && !S.spielplan.spiele.some(g => g.id === S.planungSpielId)) S.planungSpielId = null;
   delete S.gegner.tws; delete S.gegner.tw;
 }
@@ -3235,6 +3236,9 @@ function einstellungenOeffnen() {
     + gewichtFeld('e-g-note', 'Spielnote', e.gewicht && e.gewicht.note)
     + gewichtFeld('e-g-training', 'Training', e.gewicht && e.gewicht.training)
     + '</div>'
+    + '<div class="fg"><label for="e-aufg-heim">Aufgaben bei Heimspielen (eine pro Zeile)</label><textarea id="e-aufg-heim" rows="5" style="width:100%;padding:.625rem;border:2px solid var(--brd);border-radius:var(--rs);font-size:.9375rem;background:var(--surf);color:var(--txt)">' + h(aufgabenVorlage('heim').join('\n')) + '</textarea></div>'
+    + '<div class="fg"><label for="e-aufg-ausw">Aufgaben bei Auswärtsspielen (eine pro Zeile)</label><textarea id="e-aufg-ausw" rows="5" style="width:100%;padding:.625rem;border:2px solid var(--brd);border-radius:var(--rs);font-size:.9375rem;background:var(--surf);color:var(--txt)">' + h(aufgabenVorlage('auswaerts').join('\n')) + '</textarea></div>'
+    + '<div style="font-size:.6875rem;color:var(--mut);margin:-.75rem 0 1rem">Die Vorlagen gelten für neue Spiele. Bereits angelegte Spiele behalten ihre Aufgaben.</div>'
     + '<div class="fg"><label>Eigenes Logo (im Spielstand)</label>'
     + '<div style="display:flex;align-items:center;gap:.75rem"><img id="e-logo-img" alt="" src="' + h(modal.logo || eigenLogoStandard()) + '" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--brd);background:var(--bg)">'
     + '<div style="display:flex;flex-direction:column;gap:.375rem"><button class="btn btn-out btn-sm" type="button" onclick="document.getElementById(\'logo-input\').click()">📷 Logo wählen</button>'
@@ -3348,6 +3352,9 @@ function einstellungenSpeichern() {
   e.nurVornamen = !!document.getElementById('e-vornamen')?.checked;
   e.teamBAktiv = !!document.getElementById('e-team-b')?.checked;
   if (modal.logo) e.logo = modal.logo; else delete e.logo;
+  const zeilen = id => (document.getElementById(id)?.value || '').split('\n').map(x => x.trim()).filter(Boolean);
+  e.aufgabenHeim = zeilen('e-aufg-heim');
+  e.aufgabenAuswaerts = zeilen('e-aufg-ausw');
   if (!e.teamBAktiv && S.aufstellung) S.aufstellung.team = 'A';
   const vereinGeaendert = String(vereinName() || '').trim().toLowerCase() !== alterVerein;
   if (vereinGeaendert) {
@@ -3735,6 +3742,15 @@ function planGegnerName(g) {
 // Gesamter Spielplan für den Bot, mit Ergebnissen der gespielten Spiele (aus Sicht der eigenen Mannschaft)
 function coTrainerSpielplan() {
   const namen = coTrainerNamen();
+  const werFuerBot = wer => {
+    let t = String(wer || '').trim();
+    if (einst().nurVornamen === false) return t;
+    S.spieler.forEach(sp => {
+      const voll = String(sp.name || '').trim();
+      if (voll && t.toLowerCase().startsWith(voll.toLowerCase()) && (t.length === voll.length || /\s/.test(t.charAt(voll.length)))) t = namen[sp.id] + t.slice(voll.length);
+    });
+    return t;
+  };
   const nurVor = einst().nurVornamen !== false;
   const name = (id, n) => {
     if (id && namen[id]) return namen[id];
@@ -3757,7 +3773,9 @@ function coTrainerSpielplan() {
         minute: Number.isFinite(Number(t.zeitSek)) && t.zeitSek !== null ? Math.max(0, Math.round(Number(t.zeitSek) / 60)) : null,
         vorlage: t.vorlageId || t.vorlageName ? name(t.vorlageId, t.vorlageName) : ''
       })) : [];
-    return { datum: g.datum, zeit: g.zeit || '', heimAuswaerts: g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts', gegner: planGegnerName(g), ort: g.ort || '', gespielt: !!erg, ergebnis: erg, tore };
+    // Zusatzaufgaben (wer = frei eingetragener Text, z. B. „Julius Mama“; ein vollständiger Spielername am Anfang wird auf den Vornamen gekürzt)
+    const aufgaben = (Array.isArray(g.aufgaben) ? g.aufgaben : []).map(a => ({ aufgabe: a.name, wer: werFuerBot(a.wer), erledigt: !!a.erledigt, datum: a.datum || '' }));
+    return { datum: g.datum, zeit: g.zeit || '', heimAuswaerts: g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts', gegner: planGegnerName(g), ort: g.ort || '', gespielt: !!erg, ergebnis: erg, tore, aufgaben };
   });
 }
 
@@ -3813,7 +3831,7 @@ function coTrainerPanelOeffnen() {
   const zeile = (k, v) => '<div style="display:flex;justify-content:space-between;gap:.5rem;font-size:.8125rem;padding:.25rem 0;border-bottom:1px solid var(--brd)"><span style="color:var(--mut)">' + k + '</span><b style="text-align:right">' + v + '</b></div>';
   document.getElementById('modal-ti').textContent = '🤖 Co-Trainer';
   document.getElementById('modal-body').innerHTML =
-    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.75rem">Überträgt die Spieler von Team A, den Freigabe-Status, das Spiel (Datum, Gegner, Heim/Auswärts, Ort), den ganzen Spielplan mit Ergebnissen und Torschützen und die Tabelle. Bei jedem Senden wird die bisherige Co-Trainer-Liste vollständig ersetzt.</p>'
+    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.75rem">Überträgt die Spieler von Team A, den Freigabe-Status, das Spiel (Datum, Gegner, Heim/Auswärts, Ort), den ganzen Spielplan mit Ergebnissen, Torschützen und Zusatzaufgaben (wer, erledigt, Datum) und die Tabelle. Bei jedem Senden wird die bisherige Co-Trainer-Liste vollständig ersetzt.</p>'
     + '<div style="margin-bottom:.875rem">'
     + zeile('Planung für', g ? planTeamsText(g) + ' · ' + h(datumAnzeige(g.datum)) : 'freie Planung')
     + zeile('Team A', p.players.length + ' Spieler')
@@ -6140,7 +6158,7 @@ function spielplanUebernehmen() {
   neueSpiele.forEach(g => {
     const x = liste.find(y => y.datum === g.datum && y.heim === g.heim && y.auswaerts === g.auswaerts);
     if (x) { if (g.zeit) x.zeit = g.zeit; if (g.ergebnis) x.ergebnis = g.ergebnis; if (!x.ort) { const a = adresseFuer(x.heim); if (a) x.ort = a; } akt++; }
-    else { const a = adresseFuer(g.heim); liste.push(Object.assign({ id: genId() }, g, a ? { ort: a } : {})); neu++; }
+    else { const a = adresseFuer(g.heim); liste.push(Object.assign({ id: genId() }, g, a ? { ort: a } : {}, { aufgaben: aufgabenAusVorlage(g.unsereSeite) })); neu++; }
   });
   S.spielplan.spiele = planNachDatum(liste);
   S.spielplan.stand = new Date().toLocaleDateString('de-DE');
@@ -6182,8 +6200,15 @@ function planSpielSpeichern() {
   if (!ort) ort = adresseFuer(seite === 'heim' ? eigen : gegner);   // unbekannt? dann aus der Datenbank holen
   const felder = { datum, zeit, ort, unsereSeite: seite, heim: seite === 'heim' ? eigen : gegner, auswaerts: seite === 'heim' ? gegner : eigen };
   const liste = spielplanListe();
-  if (modal.id) { const g = planSpiel(modal.id); if (g) Object.assign(g, felder); }
-  else liste.push(Object.assign({ id: genId() }, felder));
+  if (modal.id) {
+    const g = planSpiel(modal.id);
+    if (g) {
+      const altSeite = g.unsereSeite;
+      Object.assign(g, felder);
+      // Seite gewechselt und noch nichts zugeteilt/erledigt: Aufgaben der neuen Seite verwenden
+      if (altSeite !== seite && Array.isArray(g.aufgaben) && !g.aufgaben.some(a => a.wer || a.erledigt)) g.aufgaben = aufgabenAusVorlage(seite);
+    }
+  } else liste.push(Object.assign({ id: genId() }, felder, { aufgaben: aufgabenAusVorlage(seite) }));
   adresseMerken(felder.heim, ort);   // Adresse der Heimmannschaft in der Datenbank merken
   S.spielplan.spiele = planNachDatum(liste);
   speichern();
@@ -6268,6 +6293,129 @@ function matchPlanZeileHtml() {
     : '📆 Spiel aus Spielplan zuweisen';
   return '<button class="btn ' + (pg ? 'btn-out' : 'btn-acc') + ' btn-sm btn-full" type="button" style="margin-bottom:.625rem;justify-content:space-between" onclick="planWahlOeffnen(\'zuweisen\')">'
     + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis">' + text + '</span><span>✏️</span></button>';
+}
+
+/* --- Zusatzaufgaben je Spiel (Trikotwäsche, Kiosk, Kuchen …) --- */
+const AUFGABEN_HEIM = ['Trikotwäsche', 'Obst mitbringen', 'Kuchen backen', 'Kioskschicht 1', 'Kioskschicht 2'];
+const AUFGABEN_AUSW = ['Trikotwäsche', 'Obst mitbringen', 'Fahrgemeinschaften bilden', 'Spieler abholen'];
+
+function aufgabenVorlage(seite) {
+  const e = einst();
+  const l = seite === 'heim' ? e.aufgabenHeim : e.aufgabenAuswaerts;
+  const arr = Array.isArray(l) ? l : (seite === 'heim' ? AUFGABEN_HEIM : AUFGABEN_AUSW);
+  return arr.map(x => String(x).trim()).filter(Boolean);
+}
+function aufgabenAusVorlage(seite) {
+  return aufgabenVorlage(seite).map(n => ({ id: genId(), name: n, wer: '', erledigt: false, datum: '' }));
+}
+// Jedes Spiel bekommt seine Aufgaben aus der Vorlage (Heim oder Auswärts)
+function aufgabenSicherstellen() {
+  spielplanListe().forEach(g => { if (!Array.isArray(g.aufgaben)) g.aufgaben = aufgabenAusVorlage(g.unsereSeite); });
+}
+function aufgabenZaehler(g) {
+  const l = Array.isArray(g.aufgaben) ? g.aufgaben : [];
+  return { fertig: l.filter(a => a.erledigt).length, gesamt: l.length };
+}
+function aufgabenButtonHtml(g) {
+  const z = aufgabenZaehler(g);
+  return '<button class="btn btn-out btn-sm" type="button" style="margin-top:.375rem" onclick="aufgabenOeffnen(\'' + g.id + '\')">📋 Aufgaben (' + z.fertig + '/' + z.gesamt + ')</button>';
+}
+
+function aufgabenOeffnen(id) {
+  if (!planSpiel(id)) return;
+  modal = { typ: 'aufgaben', id, sterne: {} };
+  aufgabenR();
+  modalFooterSichtbar(false);
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+
+function aufgabenR() {
+  const g = modal && modal.typ === 'aufgaben' ? planSpiel(modal.id) : null;
+  if (!g) return;
+  if (!Array.isArray(g.aufgaben)) g.aufgaben = aufgabenAusVorlage(g.unsereSeite);
+  document.getElementById('modal-ti').textContent = 'Aufgaben';
+  const inp = 'padding:.4rem .5rem;border:1.5px solid var(--brd);border-radius:var(--rs);font-size:.875rem;background:var(--surf);color:var(--txt);min-width:0';
+  document.getElementById('modal-body').innerHTML =
+    '<div style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">' + h(planDatumText(g)) + ' · ' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + ' · ' + planTeamsText(g) + '</div>'
+    + '<datalist id="auf-spieler">' + S.spieler.map(s => '<option value="' + h(s.name) + '"></option>').join('') + '</datalist>'
+    + (g.aufgaben.length ? g.aufgaben.map(a =>
+        '<div style="padding:.5rem 0;border-bottom:1px solid var(--brd)">'
+        + '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.375rem">'
+        + '<input type="checkbox" ' + (a.erledigt ? 'checked ' : '') + 'aria-label="Erledigt" onchange="aufgabeErledigt(\'' + a.id + '\', this.checked)" style="width:22px;height:22px;flex-shrink:0">'
+        + '<span style="flex:1;min-width:0;font-weight:700;' + (a.erledigt ? 'text-decoration:line-through;color:var(--mut)' : '') + '">' + h(a.name) + '</span>'
+        + '<button class="ib" type="button" aria-label="Aufgabe löschen" style="width:32px;height:32px;font-size:.85rem" onclick="aufgabeLoeschen(\'' + a.id + '\')">🗑️</button></div>'
+        + '<div style="display:flex;gap:.375rem;padding-left:1.875rem">'
+        + '<input type="text" list="auf-spieler" value="' + h(a.wer || '') + '" placeholder="Wer? (Spieler/Eltern)" autocomplete="off" style="flex:1;' + inp + '" onchange="aufgabeWer(\'' + a.id + '\', this.value)">'
+        + '<input type="date" value="' + h(a.datum || '') + '" aria-label="Erledigt am" style="width:136px;' + inp + '" onchange="aufgabeDatum(\'' + a.id + '\', this.value)"></div></div>').join('')
+      : '<p style="color:var(--mut);font-size:.8125rem">Keine Aufgaben.</p>')
+    + '<div style="display:flex;gap:.375rem;margin-top:.75rem"><input id="auf-neu" type="text" placeholder="Neue Aufgabe" autocomplete="off" style="flex:1;' + inp + '" onkeydown="if(event.key===\'Enter\')aufgabeAdd()">'
+    + '<button class="btn btn-out btn-sm" type="button" onclick="aufgabeAdd()">＋</button></div>'
+    + '<button class="btn btn-prim btn-full" type="button" style="margin-top:.875rem" onclick="modalSch(); spielplanR(); offeneSpieleR()">Fertig</button>';
+}
+
+function aufgabeFinden(id) {
+  const g = modal && modal.typ === 'aufgaben' ? planSpiel(modal.id) : null;
+  return g ? { g, a: (g.aufgaben || []).find(x => x.id === id) } : { g: null, a: null };
+}
+function aufgabeWer(id, wert) { const { a } = aufgabeFinden(id); if (!a) return; a.wer = String(wert || '').trim(); speichern(); coTrainerTeamAAutoSync(); }
+function aufgabeDatum(id, wert) { const { a } = aufgabeFinden(id); if (!a) return; a.datum = wert || ''; speichern(); coTrainerTeamAAutoSync(); }
+function aufgabeErledigt(id, an) {
+  const { a } = aufgabeFinden(id);
+  if (!a) return;
+  a.erledigt = !!an;
+  if (an && !a.datum) a.datum = datumIso(new Date());   // erledigt am: heute, änderbar
+  speichern();
+  coTrainerTeamAAutoSync();
+  aufgabenR();
+}
+function aufgabeLoeschen(id) {
+  const { g } = aufgabeFinden(id);
+  if (!g) return;
+  g.aufgaben = g.aufgaben.filter(x => x.id !== id);
+  speichern();
+  coTrainerTeamAAutoSync();
+  aufgabenR();
+}
+function aufgabeAdd() {
+  const g = modal && modal.typ === 'aufgaben' ? planSpiel(modal.id) : null;
+  const name = (document.getElementById('auf-neu')?.value || '').trim();
+  if (!g || !name) return;
+  g.aufgaben.push({ id: genId(), name, wer: '', erledigt: false, datum: '' });
+  speichern();
+  coTrainerTeamAAutoSync();
+  aufgabenR();
+}
+
+// Übersicht: wer hat wann was gemacht
+function aufgabenUebersichtOeffnen() {
+  modal = { typ: 'aufgabenuebersicht', id: null, sterne: {} };
+  const eintraege = [];
+  planNachDatum(spielplanListe()).forEach(g => (g.aufgaben || []).forEach(a => { if (a.wer || a.erledigt) eintraege.push({ g, a }); }));
+  const gegner = g => planKurz(g.unsereSeite === 'heim' ? g.auswaerts : g.heim);
+  const zeile = ({ g, a }) => '<div style="display:flex;gap:.5rem;font-size:.8125rem;padding:.25rem 0;border-bottom:1px solid var(--brd)">'
+    + '<span style="min-width:1.25rem">' + (a.erledigt ? '✅' : '⏳') + '</span>'
+    + '<span style="flex:1;min-width:0"><b>' + h(a.wer || '– niemand –') + '</b> <span style="color:var(--mut)">· ' + h(a.name) + ' · ' + h(gegner(g)) + '</span></span>'
+    + '<span style="color:var(--mut);white-space:nowrap">' + h(a.erledigt && a.datum ? datumDe(a.datum) : datumDe(g.datum)) + '</span></div>';
+  const proAufgabe = {};
+  eintraege.forEach(x => { (proAufgabe[x.a.name] = proAufgabe[x.a.name] || []).push(x); });
+  const proPerson = {};
+  eintraege.filter(x => x.a.wer).forEach(x => {
+    const k = x.a.wer.toLowerCase();
+    const p = proPerson[k] || (proPerson[k] = { name: x.a.wer, fertig: 0, offen: 0 });
+    if (x.a.erledigt) p.fertig++; else p.offen++;
+  });
+  const personen = Object.values(proPerson).sort((a, b) => b.fertig - a.fertig || a.name.localeCompare(b.name, 'de'));
+  const titel = t => '<div style="font-size:.8125rem;font-weight:700;color:var(--mut);margin:.875rem 0 .25rem">' + t + '</div>';
+  document.getElementById('modal-ti').textContent = '🧺 Aufgaben-Übersicht';
+  document.getElementById('modal-body').innerHTML = eintraege.length
+    ? titel('Pro Aufgabe (✅ erledigt, ⏳ zugeteilt)')
+      + Object.keys(proAufgabe).map(n => '<div style="font-weight:800;color:var(--prim);margin-top:.5rem">' + h(n) + '</div>' + proAufgabe[n].map(zeile).join('')).join('')
+      + titel('Pro Person')
+      + (personen.length ? personen.map(p => '<div style="display:flex;justify-content:space-between;font-size:.8125rem;padding:.25rem 0;border-bottom:1px solid var(--brd)"><b>' + h(p.name) + '</b><span>' + p.fertig + ' erledigt' + (p.offen ? ' · ' + p.offen + ' offen' : '') + '</span></div>').join('') : '<p style="color:var(--mut);font-size:.8125rem">Noch niemandem zugeteilt.</p>')
+      + '<button class="btn btn-prim btn-full" type="button" style="margin-top:.875rem" onclick="modalSch()">Schließen</button>'
+    : '<p style="color:var(--mut);font-size:.875rem;margin-bottom:.875rem">Noch keine Aufgaben zugeteilt oder erledigt. Öffne ein Spiel im Spielplan mit „📋 Aufgaben“.</p><button class="btn btn-prim btn-full" type="button" onclick="modalSch()">Schließen</button>';
+  modalFooterSichtbar(false);
+  document.getElementById('modal-ov').classList.remove('hidden');
 }
 
 /* --- Adress-Datenbank: Spielort je Mannschaft (Heimspielstätte) --- */
@@ -6488,17 +6636,19 @@ function offeneSpieleR() {
     + '<div class="db-match-list">' + offen.slice(0, dbAlleOffen ? offen.length : LIMIT).map(g =>
       '<div class="db-match-row"><div class="db-match-head"><span class="db-match-side">' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + '</span>'
       + '<span class="db-match-date">' + h(planDatumText(g)) + '</span></div>'
-      + '<div class="db-match-body"><span class="db-match-teams">' + planTeamsText(g) + '</span></div>' + planOrtHtml(g) + '</div>').join('') + '</div>'
+      + '<div class="db-match-body"><span class="db-match-teams">' + planTeamsText(g) + '</span></div>' + planOrtHtml(g) + aufgabenButtonHtml(g) + '</div>').join('') + '</div>'
     + (offen.length > LIMIT ? '<button class="btn btn-out btn-sm btn-full" type="button" style="margin-bottom:.9rem" onclick="dbOffenUmschalten()">' + (dbAlleOffen ? 'Weniger anzeigen' : 'Alle ' + offen.length + ' offenen Spiele anzeigen') + '</button>' : '');
 }
 
 function spielplanR() {
   const el = document.getElementById('spielplan-content');
   if (!el) return;
+  aufgabenSicherstellen();
   const liste = planNachDatum(spielplanListe());
   const kopf = '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem">'
     + '<button class="btn btn-prim btn-sm" type="button" onclick="spielplanImportOeffnen()">📥 Importieren</button>'
     + '<button class="btn btn-out btn-sm" type="button" onclick="planSpielBearbeiten()">＋ Spiel</button>'
+    + '<button class="btn btn-out btn-sm" type="button" onclick="aufgabenUebersichtOeffnen()">🧺 Aufgaben</button>'
     + '<a class="btn btn-out btn-sm" href="' + h(spielplanUrl()) + '" target="_blank" rel="noopener">📄 PDF</a></div>'
     + (S.spielplan && S.spielplan.stand ? '<div style="font-size:.6875rem;color:var(--mut);margin:-.375rem 0 .625rem">Stand ' + h(S.spielplan.stand) + '</div>' : '');
   if (!liste.length) { el.innerHTML = kopf + '<p style="color:var(--mut);font-size:.8125rem">Noch kein Spielplan. Importiere ihn aus dem bfv.de-PDF.</p>'; return; }
@@ -6512,7 +6662,7 @@ function spielplanR() {
       + '<button class="ib edit" type="button" onclick="planSpielBearbeiten(\'' + g.id + '\')" aria-label="Spiel bearbeiten" style="width:28px;height:28px;font-size:.8rem">✏️</button>'
       + '<button class="ib" type="button" onclick="planSpielLoeschen(\'' + g.id + '\')" aria-label="Spiel löschen" style="width:28px;height:28px;font-size:.8rem">🗑️</button></div></div>'
       + '<div class="db-match-body"><span class="db-match-teams">' + planTeamsText(g) + '</span><span class="db-match-score" style="font-size:.9rem">' + h(rechts) + '</span></div>' + planOrtHtml(g)
-      + (planungHatLineup(g.id === S.planungSpielId ? planungSnapshot() : g.planung) ? '<div style="font-size:.6875rem;color:var(--ok);margin-top:.25rem">🧩 Aufstellung geplant</div>' : '') + '</div>';
+      + (planungHatLineup(g.id === S.planungSpielId ? planungSnapshot() : g.planung) ? '<div style="font-size:.6875rem;color:var(--ok);margin-top:.25rem">🧩 Aufstellung geplant</div>' : '') + aufgabenButtonHtml(g) + '</div>';
   }).join('') + '</div>';
 }
 
