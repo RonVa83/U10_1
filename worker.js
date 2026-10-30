@@ -65,7 +65,7 @@ export default {
       const tore = Array.isArray(x.tore) ? x.tore.slice(0, 30).map(t => t && typeof t === "object"
         ? { spieler: text(t.spieler, 60), minute: Number.isFinite(Number(t.minute)) && t.minute !== null ? zahl(t.minute) : null, vorlage: text(t.vorlage, 60) } : null).filter(Boolean) : [];
       const aufgaben = Array.isArray(x.aufgaben) ? x.aufgaben.slice(0, 20).map(a => a && typeof a === "object"
-        ? { aufgabe: text(a.aufgabe, 60), wer: text(a.wer, 80), erledigt: a.erledigt === true, datum: text(a.datum, 10) } : null).filter(Boolean) : [];
+        ? { aufgabe: text(a.aufgabe, 60), wer: text(a.wer, 300), personen: Array.isArray(a.personen) ? a.personen.slice(0, 10).map(n => text(n, 80)).filter(Boolean) : [], erledigt: a.erledigt === true, datum: text(a.datum, 10) } : null).filter(Boolean) : [];
       return { datum: text(x.datum, 10), zeit: text(x.zeit, 5), heimAuswaerts: text(x.heimAuswaerts, 12), gegner: text(x.gegner, 60), ort: text(x.ort, 200), gespielt: x.gespielt === true && !!e, ergebnis: e, tore, aufgaben };
     }).filter(Boolean) : [];
     // Ligatabelle

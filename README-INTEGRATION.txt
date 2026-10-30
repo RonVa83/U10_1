@@ -53,7 +53,7 @@ Gleiche Daten werden nicht noch einmal gesendet (schont das Limit von 20 Sendung
       "gespielt": true | false,
       "ergebnis": { "wir": 3, "gegner": 8 } | null,     immer aus Sicht der eigenen Mannschaft
       "tore": [ { "spieler": "Max", "minute": 12, "vorlage": "Ben" } ]   eigene Torschützen (nur bei gespeicherten Matches)
-      "aufgaben": [ { "aufgabe": "Trikotwäsche", "wer": "Julius Mama", "erledigt": true, "datum": "2026-09-21" } ]   Zusatzaufgaben
+      "aufgaben": [ { "aufgabe": "Kioskschicht 1", "wer": "Julius Mama, Julius Papa", "personen": ["Julius Mama", "Julius Papa"], "erledigt": true, "datum": "2026-09-21" } ]   Zusatzaufgaben
     }
   ],
   "table": {                                Ligatabelle (aus dem letzten Import)
@@ -98,9 +98,9 @@ Hinweise:
 -------------------------------
 - Jedes Spiel im Spielplan hat Aufgaben (Standard Heim: Trikotwäsche, Obst, Kuchen, Kioskschicht 1/2; Auswärts: Trikotwäsche, Obst,
   Fahrgemeinschaften, Spieler abholen). Die Vorlagen sind unter Mehr → Einstellungen änderbar und gelten für neue Spiele.
-- „📋 Aufgaben“ beim Spiel: wer (Spieler/Eltern), erledigt-Häkchen und „erledigt am“-Datum; Aufgaben können ergänzt/gelöscht werden.
+- „📋 Aufgaben“ beim Spiel: mehrere Personen (Spieler/Eltern), erledigt-Häkchen und „erledigt am“-Datum; Aufgaben können ergänzt/gelöscht werden.
 - „🧺 Aufgaben“ im Spielplan: Übersicht, wer wann was gemacht hat (pro Aufgabe und pro Person).
-- Die Aufgaben werden an den Bot gesendet (siehe Datenformat: schedule[].aufgaben). „wer“ ist der frei eingetragene Text (z. B. „Julius Mama“).
+- Die Aufgaben werden an den Bot gesendet (siehe Datenformat: schedule[].aufgaben). „personen“ ist die Liste der eingetragenen Personen (z. B. „Julius Mama“, „Julius Papa“), „wer“ dieselben Namen mit Komma getrennt.
   Beginnt der Text mit dem vollständigen Namen eines Spielers, wird er auf den Vornamen gekürzt (außer die Einstellung „Nur Vornamen“ ist aus).
 - Mehr → Adressen: Adress-Datenbank je Mannschaft (Heimspielstätte). Neue Spiele übernehmen bekannte Adressen automatisch.
 
