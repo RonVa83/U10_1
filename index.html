@@ -5416,11 +5416,11 @@ function dashboardSpielBearbeitenSpeichern() {
 /* ===== STATISTIK-AUSWAHL (Dashboard): immer nur eine Karte zeigen ===== */
 
 const DB_STAT = [
-  { k: 'tore',      id: 'db-torschuetzen', label: '🥇 Tore' },
-  { k: 'scorer',    id: 'db-scorer',       label: '🏅 Scorer' },
+  { k: 'tore',      id: 'db-torschuetzen', label: '⚽ Tore' },
+  { k: 'scorer',    id: 'db-scorer',       label: '🎯 Scorer' },
   { k: 'noten',     id: 'db-noten',        label: '📈 Noten' },
   { k: 'einsaetze', id: 'db-einsaetze',    label: '🏃 Einsätze' },
-  { k: 'training',  id: 'stat-training',   label: '📅 Trainingsbeteiligung' }
+  { k: 'training',  id: 'stat-training',   label: '📅 Training' }
 ];
 
 function dbStatWaehlen(k) {
@@ -5443,8 +5443,8 @@ function dbStatistikR() {
   });
   chips.innerHTML = da.length > 1
     ? '<div style="font-size:.8125rem;font-weight:700;color:var(--mut);margin-bottom:.375rem">📊 Statistik</div>'
-      + '<div class="timer-quarter-row" style="grid-template-columns:repeat(' + da.length + ',minmax(0,1fr));margin-bottom:.75rem">'
-      + da.map(x => '<button class="timer-quarter-btn' + (x.k === aktiv ? ' active' : '') + '" type="button" style="font-size:.78rem;padding:0 .125rem" onclick="dbStatWaehlen(\'' + x.k + '\')">' + x.label + '</button>').join('')
+      + '<div class="timer-quarter-row" style="grid-template-columns:repeat(' + Math.min(da.length, 3) + ',minmax(0,1fr));margin-bottom:.75rem">'
+      + da.map(x => '<button class="timer-quarter-btn' + (x.k === aktiv ? ' active' : '') + '" type="button" style="font-size:.8125rem;padding:0 .25rem;white-space:nowrap" onclick="dbStatWaehlen(\'' + x.k + '\')">' + x.label + '</button>').join('')
       + '</div>'
     : '';
 }
@@ -5505,7 +5505,7 @@ function torschuetzenR() {
 
   let html = '<div style="margin-bottom:.9rem">'
     + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">'
-    + '<span style="font-size:1rem;font-weight:800;color:var(--prim)">🥇 Torschützen</span>'
+    + '<span style="font-size:1rem;font-weight:800;color:var(--prim)">⚽ Torschützen</span>'
     + '<span style="font-size:.6875rem;color:var(--mut)">' + toreGesamt + ' Tore in ' + spiele.length + ' Spiel' + (spiele.length !== 1 ? 'en' : '') + '</span></div>';
 
   if (!liste.length) {
@@ -5581,7 +5581,7 @@ function scorerR() {
 
   el.innerHTML = '<div style="margin-bottom:.9rem">'
     + '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;margin-bottom:.5rem">'
-    + '<span style="font-size:1rem;font-weight:800;color:var(--prim)">🏅 Scorerliste</span>'
+    + '<span style="font-size:1rem;font-weight:800;color:var(--prim)">🎯 Scorerliste</span>'
     + '<span style="font-size:.6875rem;color:var(--mut)">Tore + Vorlagen</span></div>'
     + '<div class="karte" style="padding:.5rem .25rem"><table style="width:100%;border-collapse:collapse;font-size:.75rem">'
     + '<thead><tr style="color:var(--mut);font-size:.625rem;text-transform:uppercase;letter-spacing:.03em;border-bottom:2px solid var(--brd)">'
