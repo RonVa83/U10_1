@@ -1838,6 +1838,7 @@ function spielTimerRender() {
 
   el.innerHTML = `
     <div class="match-hub-card">
+      ${matchPlanZeileHtml()}
       ${spielstandHtml({ embedded: true, includeTimer: true })}
     </div>
   `;
@@ -6098,29 +6099,65 @@ function planSpielLoeschen(id) {
 }
 
 /* --- Ergebnis einem Spielplan-Spiel zuordnen --- */
-function planWahlOeffnen() {
+function planWahlOeffnen(modus) {
   const liste = planZuordnungsListe();
   const heute = Date.now();
   const kandidaten = liste.filter(g => !g.ergebnis);
   const nah = (kandidaten.length ? kandidaten : liste).reduce((b, g) => !b || Math.abs(new Date(g.datum + 'T12:00:00') - heute) < Math.abs(new Date(b.datum + 'T12:00:00') - heute) ? g : b, null);
-  modal = { typ: 'planwahl', id: null, sterne: {} };
-  document.getElementById('modal-ti').textContent = 'Zu welchem Spiel gehört das Ergebnis?';
+  const zuweisen = modus === 'zuweisen';
+  modal = { typ: 'planwahl', id: null, sterne: {}, modus: zuweisen ? 'zuweisen' : 'speichern' };
+  document.getElementById('modal-ti').textContent = zuweisen ? 'Spiel aus dem Spielplan wählen' : 'Zu welchem Spiel gehört das Ergebnis?';
   const st = S.spielstand || { heim: 0, auswaerts: 0 };
   document.getElementById('modal-body').innerHTML =
-    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">Aktueller Spielstand: ' + st.heim + ' - ' + st.auswaerts + '</p>'
+    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">' + (zuweisen ? 'Heim/Auswärts und Gegner werden übernommen, das Ergebnis wird später diesem Spiel zugeordnet.' : 'Aktueller Spielstand: ' + st.heim + ' - ' + st.auswaerts) + '</p>'
     + '<div style="display:flex;flex-direction:column;gap:.5rem">'
     + liste.map(g => '<button class="btn ' + (nah && g.id === nah.id ? 'btn-prim' : 'btn-out') + '" type="button" style="justify-content:flex-start;text-align:left;white-space:normal;flex-direction:column;align-items:flex-start;gap:.125rem" onclick="planWahlGewaehlt(\'' + g.id + '\')">'
       + '<span style="font-size:.75rem;opacity:.8">' + h(planDatumText(g)) + ' · ' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + (g.ergebnis ? ' · Plan: ' + g.ergebnis.heim + ':' + g.ergebnis.auswaerts : '') + '</span>'
       + '<span>' + planTeamsText(g) + '</span></button>').join('')
-    + '<button class="btn btn-out" type="button" onclick="planWahlGewaehlt(\'\')">Ohne Spielplan speichern</button>'
+    + '<button class="btn btn-out" type="button" onclick="planWahlGewaehlt(\'\')">' + (zuweisen ? 'Zuweisung entfernen' : 'Ohne Spielplan speichern') + '</button>'
     + '<button class="btn btn-out" type="button" onclick="modalSch()">Abbrechen</button></div>';
   modalFooterSichtbar(false);
   document.getElementById('modal-ov').classList.remove('hidden');
 }
 
 function planWahlGewaehlt(id) {
+  const zuweisen = modal && modal.modus === 'zuweisen';
   modalSch();
-  dashboardSpielSpeichern(id);
+  if (zuweisen) matchPlanZuweisen(id); else dashboardSpielSpeichern(id);
+}
+
+// Kürzel (3 Buchstaben) aus dem Gegnernamen, ohne Vereinsvorsätze wie TSV, FC, SV
+function gegnerCodeAusName(n) {
+  let t = String(n || '').replace(/\s+U\d+.*$/i, '').replace(/^\(SG\)\s*/i, '').trim();
+  let vorher;
+  do { vorher = t; t = t.replace(/^(FC|TSV|SV|SC|DJK|SPVGG|SG|TUS|FSV|VFB|VFL|SSV|ASV)\s+/i, ''); } while (t !== vorher);
+  return t.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) || 'GEG';
+}
+
+// Match einem Spiel aus dem Spielplan zuweisen: Heim/Auswärts und Gegner kommen von dort
+function matchPlanZuweisen(id) {
+  if (!S.spielstand) S.spielstand = { heim: 0, auswaerts: 0, tore: [], unsereMannschaft: 'heim' };
+  const pg = id ? planSpiel(id) : null;
+  if (!pg) {
+    delete S.spielstand.planId;
+    speichern(); dbR();
+    toastZ('Zuweisung entfernt', 'ok');
+    return;
+  }
+  S.spielstand.planId = pg.id;
+  setGegnerCode(gegnerCodeAusName(pg.unsereSeite === 'heim' ? pg.auswaerts : pg.heim), false);
+  if (S.spielstand.unsereMannschaft !== pg.unsereSeite) spielstandSeiteWechseln(pg.unsereSeite);
+  speichern(); dbR();
+  toastZ('✅ Spiel zugewiesen: ' + (pg.unsereSeite === 'heim' ? 'Heim' : 'Auswärts'), 'ok');
+}
+
+function matchPlanZeileHtml() {
+  const pg = S.spielstand && S.spielstand.planId ? planSpiel(S.spielstand.planId) : null;
+  const text = pg
+    ? '📆 ' + h(datumAnzeige(pg.datum)) + ' · ' + (pg.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + ' · ' + h(planKurz(pg.unsereSeite === 'heim' ? pg.auswaerts : pg.heim))
+    : '📆 Spiel aus Spielplan zuweisen';
+  return '<button class="btn ' + (pg ? 'btn-out' : 'btn-acc') + ' btn-sm btn-full" type="button" style="margin-bottom:.625rem;justify-content:space-between" onclick="planWahlOeffnen(\'zuweisen\')">'
+    + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis">' + text + '</span><span>✏️</span></button>';
 }
 
 /* --- Anzeige: Dashboard (offene Spiele) und Spiel → Spielplan --- */
