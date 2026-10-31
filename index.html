@@ -5364,6 +5364,7 @@ function dashboardSpielBearbeiten(i) {
     typ: 'dashboardspiel', id: null, sterne: {}, index: i,
     heim: Number(sp.heim || 0), auswaerts: Number(sp.auswaerts || 0),
     tore: (Array.isArray(sp.tore) ? sp.tore : []).map(t => Object.assign({}, t)),
+    planId: sp.spielplanId || '',
     einsaetze: (() => { const m = {}; (Array.isArray(sp.einsaetze) ? sp.einsaetze : []).forEach(e => { if (e.spielerId) m[e.spielerId] = (e.viertel || []).slice(); }); return m; })()
   };
   document.getElementById('modal-ti').textContent = 'Spiel bearbeiten';
@@ -5404,8 +5405,22 @@ function dashboardSpielModalRender() {
       ).join('')
     : '<li style="color:var(--mut);font-size:.875rem">Noch keine Torschützen erfasst.</li>';
 
+  const planOptionen = planNachDatum(spielplanListe().filter(g =>
+    !planEintrag(g.id) || g.id === modal.planId
+  )).map(g =>
+    '<option value="' + h(g.id) + '"' + (g.id === modal.planId ? ' selected' : '') + '>'
+    + h(planDatumText(g) + ' · ' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + ' · ' + planKurz(g.unsereSeite === 'heim' ? g.auswaerts : g.heim))
+    + '</option>'
+  ).join('');
+
   document.getElementById('modal-body').innerHTML =
-    '<div class="fg"><label>Ergebnis</label>'
+    '<div class="fg"><label>Spielplan-Zuordnung</label>'
+    + '<select style="' + selStil + '" onchange="modal.planId=this.value">'
+    + '<option value="">— Nicht zugeordnet —</option>' + planOptionen
+    + '</select>'
+    + '<p style="color:var(--mut);font-size:.75rem;margin-top:.375rem">Ordne dieses gespeicherte Ergebnis dem passenden Spiel aus dem Spielplan zu. Torschützen und Ergebnis bleiben erhalten.</p>'
+    + '</div>'
+    + '<div class="fg"><label>Ergebnis</label>'
     + '<div style="display:flex;align-items:center;gap:.5rem">'
     + '<span style="flex:1;font-size:.8125rem;color:var(--mut);text-align:right">' + h(sp.heimName) + '</span>'
     + '<input type="number" min="0" inputmode="numeric" value="' + modal.heim + '" style="width:64px;text-align:center" oninput="dashboardModalScore(\'heim\', this.value)">'
@@ -5479,6 +5494,28 @@ function dashboardModalTorSpieler(i, id) {
 function dashboardSpielBearbeitenSpeichern() {
   const sp = S.dashboardSpiele[modal.index];
   if (!sp) { modalSch(); return; }
+  const neuePlanId = modal.planId || '';
+  if (neuePlanId) {
+    const bereitsVergeben = (S.dashboardSpiele || []).some((x, i) =>
+      i !== modal.index && x.spielplanId === neuePlanId
+    );
+    if (bereitsVergeben) {
+      toastZ('Dieses Spiel ist bereits einem anderen Ergebnis zugeordnet.', 'err');
+      return;
+    }
+    const pg = planSpiel(neuePlanId);
+    if (!pg) {
+      toastZ('Der ausgewählte Spielplaneintrag wurde nicht gefunden.', 'err');
+      return;
+    }
+    sp.spielplanId = pg.id;
+    sp.key = 'plan:' + pg.id;
+  } else {
+    delete sp.spielplanId;
+    if (String(sp.key || '').startsWith('plan:')) {
+      sp.key = 'nachtrag:' + (sp.datum || '') + ':' + modal.index;
+    }
+  }
   sp.heim = modal.heim;
   sp.auswaerts = modal.auswaerts;
   sp.tore = modal.tore;
