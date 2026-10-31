@@ -6312,13 +6312,12 @@ function aufgabenVorlage(seite) {
 function aufgabenAusVorlage(seite) {
   return aufgabenVorlage(seite).map(n => ({ id: genId(), name: n, personen: [] }));
 }
-// Aufgaben werden ausschließlich für das nächste noch nicht gespielte Spiel geführt.
+// Aufgaben bleiben für alle Spiele erhalten; nur die Bot-Übertragung ist auf das nächste Spiel begrenzt.
 function naechstesAufgabenSpiel() {
   const heute = datumIso(new Date());
   return planNachDatum(spielplanListe()).find(g => String(g.datum || '') >= heute && !planEintrag(g.id) && !g.ergebnis && !g.gespielt) || null;
 }
 function aufgabenSicherstellen() {
-  const naechstes = naechstesAufgabenSpiel();
   let geaendert = false;
   spielplanListe().forEach(g => {
     if (!Array.isArray(g.aufgaben)) { g.aufgaben = aufgabenAusVorlage(g.unsereSeite); geaendert = true; }
@@ -6328,15 +6327,11 @@ function aufgabenSicherstellen() {
       // Erledigt-Status und Erledigt-Datum werden nicht mehr verwendet.
       if (a.erledigt !== undefined) { delete a.erledigt; geaendert = true; }
       if (a.datum !== undefined) { delete a.datum; geaendert = true; }
-      // Zuteilungen älterer bzw. übernächster Spiele verwerfen.
-      if ((!naechstes || g.id !== naechstes.id) && a.personen.length) { a.personen = []; geaendert = true; }
     });
   });
   if (geaendert) speichern();
 }
 function aufgabenButtonHtml(g) {
-  const n = naechstesAufgabenSpiel();
-  if (!n || n.id !== g.id) return '';
   return '<button class="btn btn-out btn-sm" type="button" style="margin-top:.375rem" onclick="aufgabenOeffnen(\'' + g.id + '\')">📋 Aufgaben zuweisen</button>';
 }
 
@@ -6419,16 +6414,17 @@ function aufgabeAdd() {
 // Übersicht: Zuteilungen für das nächste Spiel
 function aufgabenUebersichtOeffnen() {
   modal = { typ: 'aufgabenuebersicht', id: null, sterne: {} };
-  const g = naechstesAufgabenSpiel();
-  const eintraege = g ? (g.aufgaben || []).filter(a => a.personen && a.personen.length) : [];
-  document.getElementById('modal-ti').textContent = '🧺 Aufgaben – nächstes Spiel';
-  document.getElementById('modal-body').innerHTML = g
-    ? '<div style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">' + h(planDatumText(g)) + ' · ' + planTeamsText(g) + '</div>'
-      + (eintraege.length ? eintraege.map(a => '<div style="display:flex;gap:.5rem;font-size:.8125rem;padding:.375rem 0;border-bottom:1px solid var(--brd)"><b style="flex:1">' + h(a.name) + '</b><span>' + h(a.personen.join(', ')) + '</span></div>').join('')
-        : '<p style="color:var(--mut);font-size:.875rem">Für das nächste Spiel sind noch keine Aufgaben zugeteilt.</p>')
-      + '<button class="btn btn-prim btn-full" type="button" style="margin-top:.875rem" onclick="aufgabenOeffnen(\'' + g.id + '\')">Aufgaben bearbeiten</button>'
-      + '<button class="btn btn-out btn-full" type="button" style="margin-top:.5rem" onclick="modalSch()">Schließen</button>'
-    : '<p style="color:var(--mut);font-size:.875rem">Kein zukünftiges, noch nicht gespieltes Spiel gefunden.</p><button class="btn btn-prim btn-full" type="button" onclick="modalSch()">Schließen</button>';
+  const spiele = planNachDatum(spielplanListe());
+  const eintraege = spiele.flatMap(g => (g.aufgaben || []).filter(a => Array.isArray(a.personen) && a.personen.length).map(a => ({g, a})));
+  const summen = {};
+  eintraege.forEach(({a}) => a.personen.forEach(p => { const n = String(p).trim(); if (n) summen[n] = (summen[n] || 0) + 1; }));
+  document.getElementById('modal-ti').textContent = '🧺 Aufgaben – Historie';
+  document.getElementById('modal-body').innerHTML =
+    '<div style="font-weight:700;margin-bottom:.5rem">Einsätze je Person</div>'
+    + (Object.entries(summen).length ? Object.entries(summen).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0])).map(([n,anz]) => '<div style="display:flex;justify-content:space-between;padding:.25rem 0"><span>' + h(n) + '</span><b>' + anz + '</b></div>').join('') : '<p style="color:var(--mut)">Noch keine Aufgaben zugeteilt.</p>')
+    + '<div style="font-weight:700;margin:1rem 0 .5rem">Alle dokumentierten Aufgaben</div>'
+    + (eintraege.length ? eintraege.map(({g,a}) => '<div style="padding:.5rem 0;border-bottom:1px solid var(--brd)"><div style="font-size:.75rem;color:var(--mut)">' + h(planDatumText(g)) + ' · ' + h(planTeamsText(g)) + '</div><b>' + h(a.name) + '</b><div>' + h(a.personen.join(', ')) + '</div></div>').join('') : '<p style="color:var(--mut)">Noch keine Einträge vorhanden.</p>')
+    + '<button class="btn btn-out btn-full" type="button" style="margin-top:.75rem" onclick="modalSch()">Schließen</button>';
   modalFooterSichtbar(false);
   document.getElementById('modal-ov').classList.remove('hidden');
 }
