@@ -5,3 +5,5 @@ compatibility_date = "2026-10-31"
 [[kv_namespaces]]
 binding = "LINEUP_KV"
 id = "890b92f6dd764b39b53d38714cf64640"
+
+# Trigger Cloudflare Git integration deployment check (no runtime changes).
