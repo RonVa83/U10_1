@@ -100,7 +100,7 @@ export default {
     const ergebnisse = schedule.filter(x => x.gespielt && x.ergebnis);
     const ergebnisseText = ergebnisse.length ? ergebnisse.map(x => {
       const toreText = (x.tore || []).length
-        ? `; Torschützen: ${x.tore.map(t => `${t.spieler}${t.minute !== null ? ` (${t.minute}.)` : ""}${t.vorlage ? ` nach Vorlage von ${t.vorlage}` : ""}`).join(", `)}`
+        ? `; Torschützen: ${x.tore.map(t => `${t.spieler}${t.minute !== null ? ` (${t.minute}.)` : ""}${t.vorlage ? ` nach Vorlage von ${t.vorlage}` : ""}`).join(", ")}`
         : "; keine Torschützen erfasst";
       return `- ${datumZeit(x)} gegen ${x.gegner}: ${x.ergebnis.wir}:${x.ergebnis.gegner}${toreText}`;
     }).join("\n") : "Noch keine gespeicherten Spielergebnisse vorhanden.";
