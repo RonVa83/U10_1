@@ -106,7 +106,8 @@ export default {
     }).join("\n") : "Noch keine gespeicherten Spielergebnisse vorhanden.";
     // Nur Aufgaben des zeitlich nächsten noch nicht gespielten Spiels an Typebot weitergeben.
     // Der vollständige Spielplan einschließlich aller Aufgaben bleibt in schedule erhalten.
-    const offeneSpiele = schedule.filter(x => !x.gespielt && /^\d{4}-\d{2}-\d{2}$/.test(x.datum));
+    const heute = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const offeneSpiele = schedule.filter(x => !x.gespielt && /^\d{4}-\d{2}-\d{2}$/.test(x.datum) && x.datum >= heute);
     offeneSpiele.sort((a, b) => `${a.datum}T${a.zeit || "00:00"}`.localeCompare(`${b.datum}T${b.zeit || "00:00"}`));
     const naechstesSpiel = offeneSpiele[0] || null;
     const aufgaben = naechstesSpiel ? (naechstesSpiel.aufgaben || []) : [];
