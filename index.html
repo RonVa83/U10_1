@@ -3774,10 +3774,11 @@ function coTrainerSpielplan() {
         vorlage: t.vorlageId || t.vorlageName ? name(t.vorlageId, t.vorlageName) : ''
       })) : [];
     // Zusatzaufgaben (wer = frei eingetragener Text, z. B. „Julius Mama“; ein vollständiger Spielername am Anfang wird auf den Vornamen gekürzt)
-    const aufgaben = (Array.isArray(g.aufgaben) ? g.aufgaben : []).map(a => {
+    const naechstes = naechstesAufgabenSpiel();
+    const aufgaben = naechstes && naechstes.id === g.id ? (Array.isArray(g.aufgaben) ? g.aufgaben : []).map(a => {
       const personen = (Array.isArray(a.personen) ? a.personen : (a.wer ? [a.wer] : [])).map(werFuerBot).filter(Boolean);
-      return { aufgabe: a.name, wer: personen.join(', '), personen, erledigt: !!a.erledigt, datum: a.datum || '' };
-    });
+      return { aufgabe: a.name, wer: personen.join(', '), personen };
+    }) : [];
     return { datum: g.datum, zeit: g.zeit || '', heimAuswaerts: g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts', gegner: planGegnerName(g), ort: g.ort || '', gespielt: !!erg, ergebnis: erg, tore, aufgaben };
   });
 }
@@ -3834,7 +3835,7 @@ function coTrainerPanelOeffnen() {
   const zeile = (k, v) => '<div style="display:flex;justify-content:space-between;gap:.5rem;font-size:.8125rem;padding:.25rem 0;border-bottom:1px solid var(--brd)"><span style="color:var(--mut)">' + k + '</span><b style="text-align:right">' + v + '</b></div>';
   document.getElementById('modal-ti').textContent = '🤖 Co-Trainer';
   document.getElementById('modal-body').innerHTML =
-    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.75rem">Überträgt die Spieler von Team A, den Freigabe-Status, das Spiel (Datum, Gegner, Heim/Auswärts, Ort), den ganzen Spielplan mit Ergebnissen, Torschützen und Zusatzaufgaben (wer, erledigt, Datum) und die Tabelle. Bei jedem Senden wird die bisherige Co-Trainer-Liste vollständig ersetzt.</p>'
+    '<p style="font-size:.8125rem;color:var(--mut);margin-bottom:.75rem">Überträgt die Spieler von Team A, den Freigabe-Status, das Spiel (Datum, Gegner, Heim/Auswärts, Ort), den ganzen Spielplan mit Ergebnissen und Torschützen sowie Aufgaben nur für das nächste Spiel (Aufgabe und Zuständigkeit) und die Tabelle. Bei jedem Senden wird die bisherige Co-Trainer-Liste vollständig ersetzt.</p>'
     + '<div style="margin-bottom:.875rem">'
     + zeile('Planung für', g ? planTeamsText(g) + ' · ' + h(datumAnzeige(g.datum)) : 'freie Planung')
     + zeile('Team A', p.players.length + ' Spieler')
@@ -5364,7 +5365,6 @@ function dashboardSpielBearbeiten(i) {
     typ: 'dashboardspiel', id: null, sterne: {}, index: i,
     heim: Number(sp.heim || 0), auswaerts: Number(sp.auswaerts || 0),
     tore: (Array.isArray(sp.tore) ? sp.tore : []).map(t => Object.assign({}, t)),
-    planId: sp.spielplanId || '',
     einsaetze: (() => { const m = {}; (Array.isArray(sp.einsaetze) ? sp.einsaetze : []).forEach(e => { if (e.spielerId) m[e.spielerId] = (e.viertel || []).slice(); }); return m; })()
   };
   document.getElementById('modal-ti').textContent = 'Spiel bearbeiten';
@@ -5405,22 +5405,8 @@ function dashboardSpielModalRender() {
       ).join('')
     : '<li style="color:var(--mut);font-size:.875rem">Noch keine Torschützen erfasst.</li>';
 
-  const planOptionen = planNachDatum(spielplanListe().filter(g =>
-    !planEintrag(g.id) || g.id === modal.planId
-  )).map(g =>
-    '<option value="' + h(g.id) + '"' + (g.id === modal.planId ? ' selected' : '') + '>'
-    + h(planDatumText(g) + ' · ' + (g.unsereSeite === 'heim' ? 'Heim' : 'Auswärts') + ' · ' + planKurz(g.unsereSeite === 'heim' ? g.auswaerts : g.heim))
-    + '</option>'
-  ).join('');
-
   document.getElementById('modal-body').innerHTML =
-    '<div class="fg"><label>Spielplan-Zuordnung</label>'
-    + '<select style="' + selStil + '" onchange="modal.planId=this.value">'
-    + '<option value="">— Nicht zugeordnet —</option>' + planOptionen
-    + '</select>'
-    + '<p style="color:var(--mut);font-size:.75rem;margin-top:.375rem">Ordne dieses gespeicherte Ergebnis dem passenden Spiel aus dem Spielplan zu. Torschützen und Ergebnis bleiben erhalten.</p>'
-    + '</div>'
-    + '<div class="fg"><label>Ergebnis</label>'
+    '<div class="fg"><label>Ergebnis</label>'
     + '<div style="display:flex;align-items:center;gap:.5rem">'
     + '<span style="flex:1;font-size:.8125rem;color:var(--mut);text-align:right">' + h(sp.heimName) + '</span>'
     + '<input type="number" min="0" inputmode="numeric" value="' + modal.heim + '" style="width:64px;text-align:center" oninput="dashboardModalScore(\'heim\', this.value)">'
@@ -5494,28 +5480,6 @@ function dashboardModalTorSpieler(i, id) {
 function dashboardSpielBearbeitenSpeichern() {
   const sp = S.dashboardSpiele[modal.index];
   if (!sp) { modalSch(); return; }
-  const neuePlanId = modal.planId || '';
-  if (neuePlanId) {
-    const bereitsVergeben = (S.dashboardSpiele || []).some((x, i) =>
-      i !== modal.index && x.spielplanId === neuePlanId
-    );
-    if (bereitsVergeben) {
-      toastZ('Dieses Spiel ist bereits einem anderen Ergebnis zugeordnet.', 'err');
-      return;
-    }
-    const pg = planSpiel(neuePlanId);
-    if (!pg) {
-      toastZ('Der ausgewählte Spielplaneintrag wurde nicht gefunden.', 'err');
-      return;
-    }
-    sp.spielplanId = pg.id;
-    sp.key = 'plan:' + pg.id;
-  } else {
-    delete sp.spielplanId;
-    if (String(sp.key || '').startsWith('plan:')) {
-      sp.key = 'nachtrag:' + (sp.datum || '') + ':' + modal.index;
-    }
-  }
   sp.heim = modal.heim;
   sp.auswaerts = modal.auswaerts;
   sp.tore = modal.tore;
@@ -6245,8 +6209,8 @@ function planSpielSpeichern() {
     if (g) {
       const altSeite = g.unsereSeite;
       Object.assign(g, felder);
-      // Seite gewechselt und noch nichts zugeteilt/erledigt: Aufgaben der neuen Seite verwenden
-      if (altSeite !== seite && Array.isArray(g.aufgaben) && !g.aufgaben.some(a => (a.personen && a.personen.length) || a.erledigt)) g.aufgaben = aufgabenAusVorlage(seite);
+      // Seite gewechselt und noch niemandem zugeteilt: Aufgaben der neuen Seite verwenden
+      if (altSeite !== seite && Array.isArray(g.aufgaben) && !g.aufgaben.some(a => a.personen && a.personen.length)) g.aufgaben = aufgabenAusVorlage(seite);
     }
   } else liste.push(Object.assign({ id: genId() }, felder, { aufgaben: aufgabenAusVorlage(seite) }));
   adresseMerken(felder.heim, ort);   // Adresse der Heimmannschaft in der Datenbank merken
@@ -6346,26 +6310,34 @@ function aufgabenVorlage(seite) {
   return arr.map(x => String(x).trim()).filter(Boolean);
 }
 function aufgabenAusVorlage(seite) {
-  return aufgabenVorlage(seite).map(n => ({ id: genId(), name: n, personen: [], erledigt: false, datum: '' }));
+  return aufgabenVorlage(seite).map(n => ({ id: genId(), name: n, personen: [] }));
 }
-// Jedes Spiel bekommt seine Aufgaben aus der Vorlage (Heim oder Auswärts)
+// Aufgaben werden ausschließlich für das nächste noch nicht gespielte Spiel geführt.
+function naechstesAufgabenSpiel() {
+  const heute = datumIso(new Date());
+  return planNachDatum(spielplanListe()).find(g => String(g.datum || '') >= heute && !planEintrag(g.id) && !g.ergebnis && !g.gespielt) || null;
+}
 function aufgabenSicherstellen() {
+  const naechstes = naechstesAufgabenSpiel();
+  let geaendert = false;
   spielplanListe().forEach(g => {
-    if (!Array.isArray(g.aufgaben)) g.aufgaben = aufgabenAusVorlage(g.unsereSeite);
-    // ältere Einträge: eine Person (wer) → Liste von Personen
+    if (!Array.isArray(g.aufgaben)) { g.aufgaben = aufgabenAusVorlage(g.unsereSeite); geaendert = true; }
     g.aufgaben.forEach(a => {
-      if (!Array.isArray(a.personen)) { a.personen = a.wer ? [String(a.wer)] : []; }
-      delete a.wer;
+      if (!Array.isArray(a.personen)) { a.personen = a.wer ? [String(a.wer)] : []; geaendert = true; }
+      if (a.wer !== undefined) { delete a.wer; geaendert = true; }
+      // Erledigt-Status und Erledigt-Datum werden nicht mehr verwendet.
+      if (a.erledigt !== undefined) { delete a.erledigt; geaendert = true; }
+      if (a.datum !== undefined) { delete a.datum; geaendert = true; }
+      // Zuteilungen älterer bzw. übernächster Spiele verwerfen.
+      if ((!naechstes || g.id !== naechstes.id) && a.personen.length) { a.personen = []; geaendert = true; }
     });
   });
-}
-function aufgabenZaehler(g) {
-  const l = Array.isArray(g.aufgaben) ? g.aufgaben : [];
-  return { fertig: l.filter(a => a.erledigt).length, gesamt: l.length };
+  if (geaendert) speichern();
 }
 function aufgabenButtonHtml(g) {
-  const z = aufgabenZaehler(g);
-  return '<button class="btn btn-out btn-sm" type="button" style="margin-top:.375rem" onclick="aufgabenOeffnen(\'' + g.id + '\')">📋 Aufgaben (' + z.fertig + '/' + z.gesamt + ')</button>';
+  const n = naechstesAufgabenSpiel();
+  if (!n || n.id !== g.id) return '';
+  return '<button class="btn btn-out btn-sm" type="button" style="margin-top:.375rem" onclick="aufgabenOeffnen(\'' + g.id + '\')">📋 Aufgaben zuweisen</button>';
 }
 
 function aufgabenOeffnen(id) {
@@ -6390,14 +6362,12 @@ function aufgabenR() {
     + (g.aufgaben.length ? g.aufgaben.map(a =>
         '<div style="padding:.5rem 0;border-bottom:1px solid var(--brd)">'
         + '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.375rem">'
-        + '<input type="checkbox" ' + (a.erledigt ? 'checked ' : '') + 'aria-label="Erledigt" onchange="aufgabeErledigt(\'' + a.id + '\', this.checked)" style="width:22px;height:22px;flex-shrink:0">'
-        + '<span style="flex:1;min-width:0;font-weight:700;' + (a.erledigt ? 'text-decoration:line-through;color:var(--mut)' : '') + '">' + h(a.name) + '</span>'
+        + '<span style="flex:1;min-width:0;font-weight:700">' + h(a.name) + '</span>'
         + '<button class="ib" type="button" aria-label="Aufgabe löschen" style="width:32px;height:32px;font-size:.85rem" onclick="aufgabeLoeschen(\'' + a.id + '\')">🗑️</button></div>'
         + '<div style="padding-left:1.875rem">'
         + (a.personen.length ? '<div style="display:flex;flex-wrap:wrap;gap:.375rem;margin-bottom:.375rem">' + a.personen.map((p, i) => chip(a, p, i)).join('') + '</div>' : '')
         + '<div style="display:flex;gap:.375rem;margin-bottom:.375rem"><input id="auf-p-' + a.id + '" type="text" list="auf-spieler" placeholder="' + (a.personen.length ? 'Weitere Person' : 'Wer? (Spieler/Eltern)') + '" autocomplete="off" style="flex:1;' + inp + '" onkeydown="if(event.key===\'Enter\')aufgabePersonAdd(\'' + a.id + '\')">'
         + '<button class="btn btn-out btn-sm" type="button" aria-label="Person hinzufügen" onclick="aufgabePersonAdd(\'' + a.id + '\')">＋</button></div>'
-        + '<label style="display:flex;align-items:center;gap:.5rem;font-size:.75rem;color:var(--mut)">Erledigt am <input type="date" value="' + h(a.datum || '') + '" style="width:140px;' + inp + '" onchange="aufgabeDatum(\'' + a.id + '\', this.value)"></label>'
         + '</div></div>').join('')
       : '<p style="color:var(--mut);font-size:.8125rem">Keine Aufgaben.</p>')
     + '<div style="display:flex;gap:.375rem;margin-top:.75rem"><input id="auf-neu" type="text" placeholder="Neue Aufgabe" autocomplete="off" style="flex:1;' + inp + '" onkeydown="if(event.key===\'Enter\')aufgabeAdd()">'
@@ -6428,16 +6398,6 @@ function aufgabePersonDel(id, i) {
   coTrainerTeamAAutoSync();
   aufgabenR();
 }
-function aufgabeDatum(id, wert) { const { a } = aufgabeFinden(id); if (!a) return; a.datum = wert || ''; speichern(); coTrainerTeamAAutoSync(); }
-function aufgabeErledigt(id, an) {
-  const { a } = aufgabeFinden(id);
-  if (!a) return;
-  a.erledigt = !!an;
-  if (an && !a.datum) a.datum = datumIso(new Date());   // erledigt am: heute, änderbar
-  speichern();
-  coTrainerTeamAAutoSync();
-  aufgabenR();
-}
 function aufgabeLoeschen(id) {
   const { g } = aufgabeFinden(id);
   if (!g) return;
@@ -6450,40 +6410,25 @@ function aufgabeAdd() {
   const g = modal && modal.typ === 'aufgaben' ? planSpiel(modal.id) : null;
   const name = (document.getElementById('auf-neu')?.value || '').trim();
   if (!g || !name) return;
-  g.aufgaben.push({ id: genId(), name, personen: [], erledigt: false, datum: '' });
+  g.aufgaben.push({ id: genId(), name, personen: [] });
   speichern();
   coTrainerTeamAAutoSync();
   aufgabenR();
 }
 
-// Übersicht: wer hat wann was gemacht
+// Übersicht: Zuteilungen für das nächste Spiel
 function aufgabenUebersichtOeffnen() {
   modal = { typ: 'aufgabenuebersicht', id: null, sterne: {} };
-  const eintraege = [];
-  planNachDatum(spielplanListe()).forEach(g => (g.aufgaben || []).forEach(a => { if ((a.personen && a.personen.length) || a.erledigt) eintraege.push({ g, a }); }));
-  const gegner = g => planKurz(g.unsereSeite === 'heim' ? g.auswaerts : g.heim);
-  const zeile = ({ g, a }) => '<div style="display:flex;gap:.5rem;font-size:.8125rem;padding:.25rem 0;border-bottom:1px solid var(--brd)">'
-    + '<span style="min-width:1.25rem">' + (a.erledigt ? '✅' : '⏳') + '</span>'
-    + '<span style="flex:1;min-width:0"><b>' + h(a.personen.length ? a.personen.join(' + ') : '– niemand –') + '</b> <span style="color:var(--mut)">· ' + h(gegner(g)) + '</span></span>'
-    + '<span style="color:var(--mut);white-space:nowrap">' + h(a.erledigt && a.datum ? datumDe(a.datum) : datumDe(g.datum)) + '</span></div>';
-  const proAufgabe = {};
-  eintraege.forEach(x => { (proAufgabe[x.a.name] = proAufgabe[x.a.name] || []).push(x); });
-  const proPerson = {};
-  eintraege.forEach(x => x.a.personen.forEach(name => {
-    const k = name.toLowerCase();
-    const p = proPerson[k] || (proPerson[k] = { name, fertig: 0, offen: 0 });
-    if (x.a.erledigt) p.fertig++; else p.offen++;
-  }));
-  const personen = Object.values(proPerson).sort((a, b) => b.fertig - a.fertig || a.name.localeCompare(b.name, 'de'));
-  const titel = t => '<div style="font-size:.8125rem;font-weight:700;color:var(--mut);margin:.875rem 0 .25rem">' + t + '</div>';
-  document.getElementById('modal-ti').textContent = '🧺 Aufgaben-Übersicht';
-  document.getElementById('modal-body').innerHTML = eintraege.length
-    ? titel('Pro Aufgabe (✅ erledigt, ⏳ zugeteilt)')
-      + Object.keys(proAufgabe).map(n => '<div style="font-weight:800;color:var(--prim);margin-top:.5rem">' + h(n) + '</div>' + proAufgabe[n].map(zeile).join('')).join('')
-      + titel('Pro Person')
-      + (personen.length ? personen.map(p => '<div style="display:flex;justify-content:space-between;font-size:.8125rem;padding:.25rem 0;border-bottom:1px solid var(--brd)"><b>' + h(p.name) + '</b><span>' + p.fertig + ' erledigt' + (p.offen ? ' · ' + p.offen + ' offen' : '') + '</span></div>').join('') : '<p style="color:var(--mut);font-size:.8125rem">Noch niemandem zugeteilt.</p>')
-      + '<button class="btn btn-prim btn-full" type="button" style="margin-top:.875rem" onclick="modalSch()">Schließen</button>'
-    : '<p style="color:var(--mut);font-size:.875rem;margin-bottom:.875rem">Noch keine Aufgaben zugeteilt oder erledigt. Öffne ein Spiel im Spielplan mit „📋 Aufgaben“.</p><button class="btn btn-prim btn-full" type="button" onclick="modalSch()">Schließen</button>';
+  const g = naechstesAufgabenSpiel();
+  const eintraege = g ? (g.aufgaben || []).filter(a => a.personen && a.personen.length) : [];
+  document.getElementById('modal-ti').textContent = '🧺 Aufgaben – nächstes Spiel';
+  document.getElementById('modal-body').innerHTML = g
+    ? '<div style="font-size:.8125rem;color:var(--mut);margin-bottom:.625rem">' + h(planDatumText(g)) + ' · ' + planTeamsText(g) + '</div>'
+      + (eintraege.length ? eintraege.map(a => '<div style="display:flex;gap:.5rem;font-size:.8125rem;padding:.375rem 0;border-bottom:1px solid var(--brd)"><b style="flex:1">' + h(a.name) + '</b><span>' + h(a.personen.join(', ')) + '</span></div>').join('')
+        : '<p style="color:var(--mut);font-size:.875rem">Für das nächste Spiel sind noch keine Aufgaben zugeteilt.</p>')
+      + '<button class="btn btn-prim btn-full" type="button" style="margin-top:.875rem" onclick="aufgabenOeffnen(\'' + g.id + '\')">Aufgaben bearbeiten</button>'
+      + '<button class="btn btn-out btn-full" type="button" style="margin-top:.5rem" onclick="modalSch()">Schließen</button>'
+    : '<p style="color:var(--mut);font-size:.875rem">Kein zukünftiges, noch nicht gespieltes Spiel gefunden.</p><button class="btn btn-prim btn-full" type="button" onclick="modalSch()">Schließen</button>';
   modalFooterSichtbar(false);
   document.getElementById('modal-ov').classList.remove('hidden');
 }
