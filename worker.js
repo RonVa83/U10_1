@@ -104,9 +104,14 @@ export default {
         : "; keine Torschützen erfasst";
       return `- ${datumZeit(x)} gegen ${x.gegner}: ${x.ergebnis.wir}:${x.ergebnis.gegner}${toreText}`;
     }).join("\n") : "Noch keine gespeicherten Spielergebnisse vorhanden.";
-    const aufgaben = schedule.flatMap(x => (x.aufgaben || []).map(a => ({ spiel: x, aufgabe: a })));
-    const aufgabenText = aufgaben.length ? aufgaben.map(({ spiel, aufgabe }) =>
-      `- ${aufgabe.aufgabe}: ${aufgabe.wer || (aufgabe.personen || []).join(", ") || "niemand zugeteilt"} (nächstes Spiel: ${datumZeit(spiel)} gegen ${spiel.gegner || "unbekannt"})`
+    // Nur Aufgaben des zeitlich nächsten noch nicht gespielten Spiels an Typebot weitergeben.
+    // Der vollständige Spielplan einschließlich aller Aufgaben bleibt in schedule erhalten.
+    const offeneSpiele = schedule.filter(x => !x.gespielt && /^\d{4}-\d{2}-\d{2}$/.test(x.datum));
+    offeneSpiele.sort((a, b) => `${a.datum}T${a.zeit || "00:00"}`.localeCompare(`${b.datum}T${b.zeit || "00:00"}`));
+    const naechstesSpiel = offeneSpiele[0] || null;
+    const aufgaben = naechstesSpiel ? (naechstesSpiel.aufgaben || []) : [];
+    const aufgabenText = aufgaben.length ? aufgaben.map(aufgabe =>
+      `- ${aufgabe.aufgabe}: ${aufgabe.wer || (aufgabe.personen || []).join(", ") || "niemand zugeteilt"} (nächstes Spiel: ${datumZeit(naechstesSpiel)} gegen ${naechstesSpiel.gegner || "unbekannt"})`
     ).join("\n") : "Keine Aufgaben für das nächste Spiel eingetragen.";
     const tabellenText = table.teams.length
       ? `Tabellenstand: ${table.stand || "unbekannt"}\n` + table.teams.map(t =>
